@@ -318,7 +318,8 @@ def run(path):
     bt = Backtest(df_bt, HeikinAshiWeightedStrategy,
                   cash=100000,
                   commission=0.002,
-                  exclusive_orders=True)
+                  exclusive_orders=True,
+                  finalize_trades=True) # Just to prevent extra log
     
     # Set low process priority
     try:
