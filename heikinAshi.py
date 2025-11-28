@@ -341,7 +341,7 @@ def run(path):
         weight_volume= [0.1, 0.2],
         entry_threshold=[0.9, 1.0, 1.1],
         exit_threshold=[0.9, 1.0, 1.1],
-        stop_atr_mult=[1.5, 2.0, 2.5],
+        stop_atr_mult=[1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
         maximize='Return [%]'
     )
     
