@@ -70,15 +70,32 @@ jobs:
             exit 1
           fi
 
+          # Run the script, capture stdout to dated .txt
           python heikinAshi.py IVV.csv > heikinAshi_${DATE}.txt
           echo "Wrote heikinAshi_${DATE}.txt"
 
-      - name: Upload generated file as workflow artifact (only if changed)
+          # Preserve any generated .html files by copying them to include the DATE suffix.
+          # This avoids depending on the script's specific naming and keeps original files intact.
+          shopt -s nullglob
+          html_files=( *.html )
+          if [ ${#html_files[@]} -gt 0 ]; then
+            for f in "${html_files[@]}"; do
+              dest="${f%.*}_${DATE}.html"
+              cp "$f" "$dest"
+              echo "Copied $f to $dest for artifact preservation"
+            done
+          else
+            echo "No .html files found to preserve"
+          fi
+
+      - name: Upload generated files as workflow artifact (only if changed)
         if: steps.check.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: heikinAshi-${{ env.DATE }}
-          path: heikinAshi_${{ env.DATE }}.txt
+          path: |
+            heikinAshi_${{ env.DATE }}.txt
+            *.html
 
       # Optional: commit the generated file back to the repository.
       # WARNING: enabling this will make the workflow push to the default branch.
