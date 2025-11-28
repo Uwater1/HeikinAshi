@@ -1,0 +1,95 @@
+name: HeikinAshi daily run
+
+on:
+  # daily at 03:00 UTC (quiet time)
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-if-heikinashi-changed:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set DATE environment variable (UTC YYYY-MM-DD)
+        run: echo "DATE=$(date -u +%F)" >> $GITHUB_ENV
+
+      - id: check
+        name: Check whether heikinAshi.py was changed today (UTC)
+        run: |
+          # Ensure we have refs and full history
+          git fetch --no-tags --prune || true
+
+          # Use UTC midnight today as the "since" boundary
+          SINCE="$(date -u '+%Y-%m-%dT00:00:00Z')"
+          echo "Checking commits since $SINCE for changes to heikinAshi.py"
+
+          # Search commits since midnight UTC for file named exactly "heikinAshi.py"
+          if git log --since="$SINCE" --name-only --pretty=format: | grep -q '^heikinAshi.py$'; then
+            echo "heikinAshi.py changed since $SINCE"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "no change to heikinAshi.py since $SINCE"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Python (only if changed)
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies (only if changed and requirements.txt exists)
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found; skipping pip install"
+          fi
+
+      - name: Run heikinAshi.py (only if changed)
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          # Fail fast if script or data missing
+          if [ ! -f heikinAshi.py ]; then
+            echo "heikinAshi.py not found" >&2
+            exit 1
+          fi
+          if [ ! -f IVV.csv ]; then
+            echo "IVV.csv not found" >&2
+            exit 1
+          fi
+
+          python heikinAshi.py IVV.csv > heikinAshi_${DATE}.txt
+          echo "Wrote heikinAshi_${DATE}.txt"
+
+      - name: Upload generated file as workflow artifact (only if changed)
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: heikinAshi-${{ env.DATE }}
+          path: heikinAshi_${{ env.DATE }}.txt
+
+      # Optional: commit the generated file back to the repository.
+      # WARNING: enabling this will make the workflow push to the default branch.
+      # Uncomment and configure if you want the output committed automatically.
+      # - name: Commit and push generated file back to repo (optional)
+      #   if: steps.check.outputs.changed == 'true'
+      #   run: |
+      #     git config user.name "github-actions[bot]"
+      #     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      #     git add heikinAshi_${DATE}.txt
+      #     git commit -m "Add heikinAshi output for ${DATE} [ci skip]" || echo "Nothing to commit"
+      #     git push origin "HEAD:refs/heads/${GITHUB_REF#refs/heads/}"
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
