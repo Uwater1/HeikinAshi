@@ -1,0 +1,6 @@
+numpy
+pandas
+pandas-ta
+psutil
+numba
+backtesting
