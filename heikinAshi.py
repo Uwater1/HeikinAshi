@@ -132,7 +132,6 @@ class HeikinAshiWeightedStrategy(Strategy):
     weight_2 = 0.20
     weight_3 = 0.25
     weight_4 = 0.30
-    weight_5 = 0.40
 
     # Bonuses
     weight_doji = 0.20
@@ -182,16 +181,16 @@ class HeikinAshiWeightedStrategy(Strategy):
         return float(self.ha_close[idx]) - float(self.ha_open[idx])
 
     def compute_entry_score(self):
-        """Compute weighted entry score using up to 5 most recent HA candles."""
+        """Compute weighted entry score using up to 4 most recent HA candles."""
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        weights = [self.weight_1, self.weight_2, self.weight_3, self.weight_4, self.weight_5]
+        weights = [self.weight_1, self.weight_2, self.weight_3, self.weight_4]
         score = 0.0
 
-        # Lookback up to 5 bars
-        for i in range(5):
+        # Lookback up to 4 bars
+        for i in range(4):
             idx = -(i + 1)
             try:
                 ha_o = float(self.ha_open[idx])
@@ -230,15 +229,15 @@ class HeikinAshiWeightedStrategy(Strategy):
         return score
 
     def compute_exit_score(self):
-        """Compute weighted exit score using up to 5 most recent HA candles."""
+        """Compute weighted exit score using up to 4 most recent HA candles."""
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        weights = [self.weight_1, self.weight_2, self.weight_3, self.weight_4, self.weight_5]
+        weights = [self.weight_1, self.weight_2, self.weight_3, self.weight_4]
         score = 0.0
 
-        for i in range(5):
+        for i in range(4):
             idx = -(i + 1)
             try:
                 ha_o = float(self.ha_open[idx])
@@ -339,21 +338,38 @@ def run(path):
     
     print("--- Starting Optimization ---")
     print("This may take 10-20 minutes depending on your system...\n")
-    
+
+
     stats, heatmap = bt.optimize(
         weight_1=[0.1, 0.15, 0.2, 0.25],
         weight_2=[0.2, 0.25, 0.3],
         weight_3=[0.15, 0.2, 0.25],
         weight_4=[0.2, 0.25, 0.3],
-        weight_5=[0.2, 0.25, 0.3],
         weight_doji=[0.1, 0.2, 0.3],
         weight_volume= [0.05, 0.1, 0.15],
         entry_threshold=[0.7, 0.8, 0.9, 1.0],
         exit_threshold=[1.0, 1.1, 1.2],
-        stop_atr_mult=[1.5, 2.0, 2.5, 3.0],
+        stop_atr_mult=[1.5, 2.0, 2.5, 3.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
+
+    '''
+    stats, heatmap = bt.optimize(
+        weight_1=[0.2, 0.25],
+        weight_2=0.25,
+        weight_3=0.25,
+        weight_4=0.25,
+        weight_doji=0.25,
+        weight_volume= 0.1,
+        entry_threshold=[0.7, 0.9],
+        exit_threshold=[1.0, 1.2],
+        stop_atr_mult=[2.0, 3.0],        
+        maximize='Return [%]',
+        return_heatmap=True
+    )
+    '''
+
     
     print("\n--- Optimization Complete ---\n")
     print(stats)
@@ -364,7 +380,6 @@ def run(path):
     print(f"  weight_2: {st.weight_2}")
     print(f"  weight_3: {st.weight_3}")
     print(f"  weight_4: {st.weight_4}")
-    print(f"  weight_5: {st.weight_5}")
     print(f"  weight_doji: {st.weight_doji}")
     print(f"  weight_volume: {st.weight_volume}")
     print(f"  entry_threshold: {st.entry_threshold}")
