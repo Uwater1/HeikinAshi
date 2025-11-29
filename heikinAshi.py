@@ -8,9 +8,16 @@ import pandas_ta as ta
 import sys
 import os
 import psutil
+import multiprocessing as mp
 from datetime import date
 from numba import jit
 from backtesting import Backtest, Strategy
+
+if os.name == 'posix' and __name__ == '__main__':
+    try:
+        mp.set_start_method('fork', force=True)
+    except RuntimeError:
+        pass  # Already set
 
 # ========================================
 # Numba-Optimized Functions
