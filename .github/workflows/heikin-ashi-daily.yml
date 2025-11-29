@@ -88,6 +88,58 @@ jobs:
             echo "No .html files found to preserve"
           fi
 
+      - name: Write job summary (only if changed)
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          # $GITHUB_STEP_SUMMARY is a file path provided by GitHub Actions.
+          # Appending a small markdown summary here makes results visible in the "Job summary" UI.
+          echo "## HeikinAshi run summary for ${DATE}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Generated files:" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f heikinAshi_${DATE}.txt ]; then
+            echo "  - heikinAshi_${DATE}.txt" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "  - (no text output)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          shopt -s nullglob
+          html_files=( *_${DATE}.html *.html )
+          if [ ${#html_files[@]} -gt 0 ]; then
+            for f in "${html_files[@]}"; do
+              echo "  - ${f}" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Key output (first 200 lines of heikinAshi_${DATE}.txt)" >> $GITHUB_STEP_SUMMARY
+          if [ -f heikinAshi_${DATE}.txt ]; then
+            # Indent block so it renders as code in the summary
+            head -n 200 heikinAshi_${DATE}.txt | sed 's/^/    /' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "_no text output_" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Print generated files to workflow logs (only if changed)
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          # Printing the main outputs into the workflow logs makes them available in the run logs
+          # (useful if you want to avoid downloading artifacts).
+          echo "=== Begin heikinAshi_${DATE}.txt (showing up to 500 lines) ==="
+          if [ -f heikinAshi_${DATE}.txt ]; then
+            sed -n '1,500p' heikinAshi_${DATE}.txt
+          else
+            echo "(no text output)"
+          fi
+          echo "=== End heikinAshi_${DATE}.txt ==="
+
+          shopt -s nullglob
+          for f in *_${DATE}.html *.html; do
+            echo "=== Begin $f (showing up to 200 lines) ==="
+            sed -n '1,200p' "$f" || echo "(unable to print $f)"
+            echo "=== End $f ==="
+          done
+
       - name: Upload generated files as workflow artifact (only if changed)
         if: steps.check.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
