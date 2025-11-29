@@ -6,6 +6,9 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+env:
+  DATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.date || '' }}
+
 jobs:
   run-if-heikinashi-changed:
     runs-on: ubuntu-latest
