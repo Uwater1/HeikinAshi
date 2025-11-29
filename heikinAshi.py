@@ -93,9 +93,9 @@ def load_csv(path):
 
 def indicator_atr(high, low, close, length=14):
     """ATR with Numba optimization."""
-    high = np.asarray(high, dtype=np.float64)
-    low = np.asarray(low, dtype=np.float64)
-    close = np.asarray(close, dtype=np.float64)
+    high = np.asarray(high, dtype=np.float32)
+    low = np.asarray(low, dtype=np.float32)
+    close = np.asarray(close, dtype=np.float32)
     
     tr = _compute_tr_numba(high, low, close)
     atr = pd.Series(tr).rolling(window=length, min_periods=1).mean().to_numpy()
@@ -167,13 +167,13 @@ class HeikinAshiWeightedStrategy(Strategy):
         ))
 
         # Register HA columns as indicators
-        self.ha_open = self.I(lambda: np.asarray(self.data.HA_open))
-        self.ha_close = self.I(lambda: np.asarray(self.data.HA_close))
-        self.ha_high = self.I(lambda: np.asarray(self.data.HA_high))
-        self.ha_low = self.I(lambda: np.asarray(self.data.HA_low))
+        self.ha_open = self.I(lambda: np.asarray(self.data.HA_open, dtype=np.float32))
+        self.ha_close = self.I(lambda: np.asarray(self.data.HA_close, dtype=np.float32))
+        self.ha_high = self.I(lambda: np.asarray(self.data.HA_high, dtype=np.float32))
+        self.ha_low = self.I(lambda: np.asarray(self.data.HA_low, dtype=np.float32))
 
         # Volume array accessor
-        self.vol = self.I(lambda: np.asarray(self.data.Volume))
+        self.vol = self.I(lambda: np.asarray(self.data.Volume, dtype=np.float32))
 
     def _is_green(self, idx):
         """Check if candle at idx is green."""
