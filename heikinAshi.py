@@ -317,7 +317,7 @@ def run(path):
     print("Initializing backtest...")
     bt = Backtest(df_bt, HeikinAshiWeightedStrategy,
                   cash=100000,
-                  commission=0.002,
+                  commission=0.001,
                   exclusive_orders=True,
                   finalize_trades=True) # Just to prevent extra log
     
@@ -332,18 +332,19 @@ def run(path):
     print("--- Starting Optimization ---")
     print("This may take 10-20 minutes depending on your system...\n")
     
-    stats = bt.optimize(
-        weight_1=[0.1, 0.15, 0.2],
-        weight_2=[0.15, 0.2, 0.25],
-        weight_3=[0.2, 0.25, 0.3],
-        weight_4=[0.25, 0.3, 0.35],
-        weight_5=[0.3, 0.4, 0.5],
-        weight_doji=[0.1, 0.2],
-        weight_volume= [0.1, 0.2],
-        entry_threshold=[0.9, 1.0, 1.1],
-        exit_threshold=[0.9, 1.0, 1.1],
-        stop_atr_mult=[1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
-        maximize='Return [%]'
+    stats, heatmap = bt.optimize(
+        weight_1=[0.1, 0.15, 0.2, 0.25],
+        weight_2=[0.2, 0.25, 0.3],
+        weight_3=[0.15, 0.2, 0.25],
+        weight_4=[0.2, 0.25, 0.3],
+        weight_5=[0.2, 0.25, 0.3],
+        weight_doji=[0.1, 0.2, 0.3],
+        weight_volume= [0.05, 0.1, 0.15],
+        entry_threshold=[0.7, 0.8, 0.9, 1.0],
+        exit_threshold=[1.0, 1.1, 1.2],
+        stop_atr_mult=[1.5, 2.0, 2.5, 3.0],
+        maximize='Return [%]',
+        return_heatmap=True
     )
     
     print("\n--- Optimization Complete ---\n")
@@ -365,7 +366,9 @@ def run(path):
     print("\nPlotting results...")
     plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
     bt.plot(filename=plot_filename)
+    bt.plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}")
+    print(f"Heatmap saved as: {heatmap_filename}")
 
 # ========================================
 # CLI Entry Point
