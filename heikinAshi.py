@@ -12,6 +12,7 @@ import multiprocessing as mp
 from datetime import date
 from numba import jit
 from backtesting import Backtest, Strategy
+from backtesting.lib import plot_heatmaps
 
 if os.name == 'posix' and __name__ == '__main__':
     try:
@@ -373,7 +374,7 @@ def run(path):
     print("\nPlotting results...")
     plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
     bt.plot(filename=plot_filename)
-    bt.plot_heatmaps(heatmap, filename=heatmap_filename)
+    plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}")
     print(f"Heatmap saved as: {heatmap_filename}")
 
