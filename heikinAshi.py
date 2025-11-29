@@ -8,11 +8,18 @@ import pandas_ta as ta
 import sys
 import os
 import psutil
+import logging
 import multiprocessing as mp
 from datetime import date
 from numba import jit
 from backtesting import Backtest, Strategy
 from backtesting.lib import plot_heatmaps
+
+# Silence tqdm progress bars emitted by Backtest.run / optimize
+os.environ.setdefault("TQDM_DISABLE", "1")
+
+# Limit third-party logging noise to errors only
+logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
 
 if os.name == 'posix' and __name__ == '__main__':
     try:
@@ -341,7 +348,7 @@ def run(path):
 
 
     stats, heatmap = bt.optimize(
-        weight_1=[0.1, 0.15, 0.2, 0.25],
+        weight_1=[0.2, 0.25, 0.25, 0.3],
         weight_2=[0.2, 0.25, 0.3],
         weight_3=[0.15, 0.2, 0.25],
         weight_4=[0.2, 0.25, 0.3],
@@ -349,7 +356,7 @@ def run(path):
         weight_volume= [0.05, 0.1, 0.15],
         entry_threshold=[0.7, 0.8, 0.9, 1.0],
         exit_threshold=[1.0, 1.1, 1.2],
-        stop_atr_mult=[1.5, 2.0, 2.5, 3.0],        
+        stop_atr_mult=[2.0, 2.5, 3.0, 3.5, 4.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
