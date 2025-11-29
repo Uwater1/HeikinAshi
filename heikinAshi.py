@@ -72,6 +72,81 @@ def _compute_heikin_ashi_numba(o, h, l, c):
     
     return ha_open, ha_high, ha_low, ha_close
 
+
+@jit(nopython=True, cache=True)
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vol, vol_ma_period, weight_doji, weight_volume, is_entry=True):
+    """Numba-optimized score calculation for entry/exit."""
+    score = 0.0
+    lookback = 4
+    
+    for i in range(lookback):
+        idx = -(i + 1)
+        ha_o = ha_open[idx]
+        ha_c = ha_close[idx]
+        body = ha_c - ha_o
+        
+        if is_entry:
+            if body > 0:  # green candle
+                norm_body = body / atr_cur
+                if norm_body > 3.0:
+                    norm_body = 3.0
+                score += weights[i] * norm_body
+        else:
+            body = ha_o - ha_c  # positive if red
+            if body > 0:
+                norm_body = body / atr_cur
+                if norm_body > 3.0:
+                    norm_body = 3.0
+                score += weights[i] * norm_body
+    
+    # Doji bonus: check bar -6
+    try:
+        prior_idx = -6
+        prior_body = abs(ha_close[prior_idx] - ha_open[prior_idx])
+        if prior_body < doji_body_frac * atr_cur:
+            if is_entry:
+                if ha_close[prior_idx] < ha_open[prior_idx]:
+                    score += weight_doji
+            else:
+                if ha_close[prior_idx] > ha_open[prior_idx]:
+                    score += weight_doji
+    except:
+        pass
+    
+    # Volume bonus
+    try:
+        vol_cur = vol[-1]
+        if len(vol) >= vol_ma_period + 1:
+            vol_ma = 0.0
+            cnt = 0
+            for v in vol[-(vol_ma_period + 1):-1]:
+                if not np.isnan(v):
+                    vol_ma += v
+                    cnt += 1
+            if cnt > 0:
+                vol_ma /= cnt
+        else:
+            vol_ma = 0.0
+            cnt = 0
+            for v in vol:
+                if not np.isnan(v):
+                    vol_ma += v
+                    cnt += 1
+            if cnt > 0:
+                vol_ma /= cnt
+        
+        if vol_ma > 0 and vol_cur > 1.2 * vol_ma:
+            if is_entry:
+                score += weight_volume
+            else:
+                # Exit volume bonus only on red bars
+                if ha_close[-1] < ha_open[-1]:
+                    score += weight_volume
+    except:
+        pass
+    
+    return score
+
 # ========================================
 # Data Loading
 # ========================================
@@ -193,47 +268,13 @@ class HeikinAshiWeightedStrategy(Strategy):
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        weights = [self.weight_1, self.weight_2, self.weight_3, self.weight_4]
-        score = 0.0
-
-        # Lookback up to 4 bars
-        for i in range(4):
-            idx = -(i + 1)
-            try:
-                ha_o = float(self.ha_open[idx])
-                ha_c = float(self.ha_close[idx])
-            except Exception:
-                break
-
-            body = ha_c - ha_o
-            if body > 0:  # green candle
-                norm_body = body / atr_cur
-                norm_body = min(norm_body, 3.0)
-                score += weights[i] * norm_body
-
-        # Doji bonus: check bar -6 for small red/doji
-        try:
-            prior_idx = -6
-            prior_body = abs(float(self.ha_close[prior_idx]) - float(self.ha_open[prior_idx]))
-            if prior_body < self.doji_body_frac * atr_cur and (float(self.ha_close[prior_idx]) < float(self.ha_open[prior_idx])):
-                score += self.weight_doji
-        except Exception:
-            pass
-
-        # Volume bonus
-        try:
-            vol_cur = float(self.vol[-1])
-            if len(self.vol) >= self.vol_ma_period + 1:
-                vol_ma = float(np.nanmean(self.vol[-(self.vol_ma_period + 1):-1]))
-            else:
-                vol_ma = float(np.nanmean(self.vol))
-
-            if vol_ma > 0 and vol_cur > 1.2 * vol_ma:
-                score += self.weight_volume
-        except Exception:
-            pass
-
-        return score
+        weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
+        return float(_compute_score_numba(
+            self.ha_open, self.ha_close, np.float32(atr_cur), weights,
+            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
+            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            is_entry=True
+        ))
 
     def compute_exit_score(self):
         """Compute weighted exit score using up to 4 most recent HA candles."""
@@ -241,46 +282,13 @@ class HeikinAshiWeightedStrategy(Strategy):
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        weights = [self.weight_1, self.weight_2, self.weight_3, self.weight_4]
-        score = 0.0
-
-        for i in range(4):
-            idx = -(i + 1)
-            try:
-                ha_o = float(self.ha_open[idx])
-                ha_c = float(self.ha_close[idx])
-            except Exception:
-                break
-
-            body = ha_o - ha_c  # positive if red
-            if body > 0:
-                norm_body = body / atr_cur
-                norm_body = min(norm_body, 3.0)
-                score += weights[i] * norm_body
-
-        # Doji bonus: check bar -6 for small green doji
-        try:
-            prior_idx = -6
-            prior_body = abs(float(self.ha_close[prior_idx]) - float(self.ha_open[prior_idx]))
-            if prior_body < self.doji_body_frac * atr_cur and (float(self.ha_close[prior_idx]) > float(self.ha_open[prior_idx])):
-                score += self.weight_doji
-        except Exception:
-            pass
-
-        # Volume bonus on red bars
-        try:
-            vol_cur = float(self.vol[-1])
-            if len(self.vol) >= self.vol_ma_period + 1:
-                vol_ma = float(np.nanmean(self.vol[-(self.vol_ma_period + 1):-1]))
-            else:
-                vol_ma = float(np.nanmean(self.vol))
-
-            if (float(self.ha_close[-1]) < float(self.ha_open[-1])) and vol_ma > 0 and vol_cur > 1.2 * vol_ma:
-                score += self.weight_volume
-        except Exception:
-            pass
-
-        return score
+        weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
+        return float(_compute_score_numba(
+            self.ha_open, self.ha_close, np.float32(atr_cur), weights,
+            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
+            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            is_entry=False
+        ))
 
     def next(self):
         """Execute strategy logic on each bar."""
@@ -346,7 +354,7 @@ def run(path):
     print("--- Starting Optimization ---")
     print("This may take 10-20 minutes depending on your system...\n")
 
-
+    #'''
     stats, heatmap = bt.optimize(
         weight_1=[0.2, 0.25, 0.25, 0.3],
         weight_2=[0.2, 0.25, 0.3],
@@ -360,7 +368,7 @@ def run(path):
         maximize='Return [%]',
         return_heatmap=True
     )
-
+    #'''
     '''
     stats, heatmap = bt.optimize(
         weight_1=[0.2, 0.25],
@@ -395,6 +403,7 @@ def run(path):
     
     print("\nPlotting results...")
     plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
+    heatmap_filename = f"HeikinAshi_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}")

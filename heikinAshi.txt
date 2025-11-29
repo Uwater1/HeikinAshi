@@ -6,3 +6,57 @@ Initializing backtest...
 --- Starting Optimization ---
 This may take 10-20 minutes depending on your system...
 
+
+--- Optimization Complete ---
+
+Start                     2015-11-16 00:00:00
+End                       2025-11-14 00:00:00
+Duration                   3651 days 00:00:00
+Exposure Time [%]                    76.06362
+Equity Final [$]                 276335.31496
+Equity Peak [$]                  285701.61806
+Commissions [$]                    6902.17587
+Return [%]                          176.33531
+Buy & Hold Return [%]               226.52065
+Return (Ann.) [%]                    10.72136
+Volatility (Ann.) [%]                 12.8308
+CAGR [%]                              7.26768
+Sharpe Ratio                           0.8356
+Sortino Ratio                         1.29661
+Calmar Ratio                          0.55119
+Alpha [%]                            85.95145
+Beta                                  0.39901
+Max. Drawdown [%]                   -19.45127
+Avg. Drawdown [%]                    -1.44709
+Max. Drawdown Duration      746 days 00:00:00
+Avg. Drawdown Duration       25 days 00:00:00
+# Trades                                   21
+Win Rate [%]                         57.14286
+Best Trade [%]                        33.3763
+Worst Trade [%]                      -5.00731
+Avg. Trade [%]                        4.97037
+Max. Trade Duration         410 days 00:00:00
+Avg. Trade Duration         131 days 00:00:00
+Profit Factor                         4.70611
+Expectancy [%]                        5.41881
+SQN                                   2.11476
+Kelly Criterion                       0.43515
+_strategy                 HeikinAshiWeight...
+_equity_curve                             ...
+_trades                       Size  EntryB...
+dtype: object
+
+--- Best Parameters ---
+  weight_1: 0.2
+  weight_2: 0.25
+  weight_3: 0.25
+  weight_4: 0.25
+  weight_doji: 0.25
+  weight_volume: 0.1
+  entry_threshold: 0.9
+  exit_threshold: 1.2
+  stop_atr_mult: 2.0
+
+Plotting results...
+Plot saved as: HeikinAshi_optimized_2025-11-29.html
+Heatmap saved as: HeikinAshi_heatmap_2025-11-29.html
