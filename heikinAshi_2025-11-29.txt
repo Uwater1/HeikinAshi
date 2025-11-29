@@ -1,0 +1,62 @@
+Loading data...
+Computing Heikin-Ashi...
+Initializing backtest...
+✓ Process priority set to low
+
+--- Starting Optimization ---
+This may take 10-20 minutes depending on your system...
+
+
+--- Optimization Complete ---
+
+Start                     2015-11-16 00:00:00
+End                       2025-11-14 00:00:00
+Duration                   3651 days 00:00:00
+Exposure Time [%]                    79.16501
+Equity Final [$]                 351569.15223
+Equity Peak [$]                  363498.14843
+Commissions [$]                    6026.69188
+Return [%]                          251.56915
+Buy & Hold Return [%]               226.52065
+Return (Ann.) [%]                    13.42522
+Volatility (Ann.) [%]                13.53203
+CAGR [%]                              9.06536
+Sharpe Ratio                          0.99211
+Sortino Ratio                         1.59597
+Calmar Ratio                          0.94843
+Alpha [%]                           155.65584
+Beta                                  0.42342
+Max. Drawdown [%]                   -14.15514
+Avg. Drawdown [%]                    -1.39431
+Max. Drawdown Duration      462 days 00:00:00
+Avg. Drawdown Duration       20 days 00:00:00
+# Trades                                   15
+Win Rate [%]                             60.0
+Best Trade [%]                       67.81106
+Worst Trade [%]                      -5.33242
+Avg. Trade [%]                        8.75962
+Max. Trade Duration         716 days 00:00:00
+Avg. Trade Duration         191 days 00:00:00
+Profit Factor                          7.8036
+Expectancy [%]                       10.34868
+SQN                                   1.90506
+Kelly Criterion                        0.5048
+_strategy                 HeikinAshiWeight...
+_equity_curve                             ...
+_trades                       Size  EntryB...
+dtype: object
+
+--- Best Parameters ---
+  weight_1: 0.2
+  weight_2: 0.2
+  weight_3: 0.25
+  weight_4: 0.2
+  weight_doji: 0.2
+  weight_volume: 0.1
+  entry_threshold: 0.8
+  exit_threshold: 1.2
+  stop_atr_mult: 2.0
+
+Plotting results...
+Plot saved as: HeikinAshi_optimized_2025-11-29.html
+Heatmap saved as: HeikinAshi_heatmap_2025-11-29.html

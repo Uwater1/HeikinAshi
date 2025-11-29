@@ -74,12 +74,17 @@ jobs:
           python heikinAshi.py IVV.csv > heikinAshi_${DATE}.txt
           echo "Wrote heikinAshi_${DATE}.txt"
 
-          # Preserve any generated .html files by copying them to include the DATE suffix.
-          # This avoids depending on the script's specific naming and keeps original files intact.
+          # Preserve any generated .html files by copying them to include the DATE suffix,
+          # but only if they don't already contain the DATE to avoid duplicates.
           shopt -s nullglob
           html_files=( *.html )
           if [ ${#html_files[@]} -gt 0 ]; then
             for f in "${html_files[@]}"; do
+              # Skip if filename already contains the DATE
+              if [[ "$f" == *"${DATE}"* ]]; then
+                echo "Skipping $f (already contains date)"
+                continue
+              fi
               dest="${f%.*}_${DATE}.html"
               cp "$f" "$dest"
               echo "Copied $f to $dest for artifact preservation"
