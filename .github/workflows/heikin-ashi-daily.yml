@@ -3,7 +3,7 @@ name: HeikinAshi daily run
 on:
   # daily at 05:00 UTC (quiet time)
   schedule:
-    - cron: '0 4 * * *'
+    - cron: '0 5 * * *'
   workflow_dispatch:
 
 env:
@@ -76,25 +76,6 @@ jobs:
           # Run the script, capture stdout to dated .txt
           python heikinAshi.py IVV.csv > heikinAshi_${DATE}.txt
           echo "Wrote heikinAshi_${DATE}.txt"
-
-          # Preserve any generated .html files by copying them to include the DATE suffix,
-          # but only if they don't already contain the DATE to avoid duplicates.
-          shopt -s nullglob
-          html_files=( *.html )
-          if [ ${#html_files[@]} -gt 0 ]; then
-            for f in "${html_files[@]}"; do
-              # Skip if filename already contains the DATE
-              if [[ "$f" == *"${DATE}"* ]]; then
-                echo "Skipping $f (already contains date)"
-                continue
-              fi
-              dest="${f%.*}_${DATE}.html"
-              cp "$f" "$dest"
-              echo "Copied $f to $dest for artifact preservation"
-            done
-          else
-            echo "No .html files found to preserve"
-          fi
 
       - name: Write job summary (only if changed)
         if: steps.check.outputs.changed == 'true'
