@@ -416,8 +416,8 @@ def run(path):
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
-    print("\n--- Top 120 parameter sets (by Return [%]): (.csv) ---")
-    top_df = heatmap.sort_values(ascending=False).iloc[:120].reset_index()
+    print("\n--- Top 150 parameter sets (by Return [%]): (.csv) ---")
+    top_df = heatmap.sort_values(ascending=False).iloc[:150].reset_index()
     print(top_df.to_csv(index=False,float_format='%.2f'))
 
 # ========================================
