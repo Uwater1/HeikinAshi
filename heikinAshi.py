@@ -225,7 +225,6 @@ class HeikinAshiWeightedStrategy(Strategy):
 
     # Stop in ATR multiples
     stop_atr_mult = 2.0
-    trailing_atr_mult = 3.0
 
     # Doji threshold (fraction of ATR)
     doji_body_frac = 0.20
@@ -305,33 +304,18 @@ class HeikinAshiWeightedStrategy(Strategy):
                 
                 try:
                     self.buy(sl=sl_price)
-                    self.high_watermark = price
                 except Exception:
                     self.buy()
-                    self.high_watermark = price
 
-        # Position management and exit logic
+        # Exit logic
         else:
-            # Update trailing stop
-            self.high_watermark = max(self.high_watermark, price)
-            trailing_sl = self.high_watermark - self.trailing_atr_mult * atr_cur
-            if self.trades:
-                trade = self.trades[0]
-                new_sl = max(trade.sl, trailing_sl)
-                trade.sl = new_sl
-
-            # Exit score logic
             exit_score = self.compute_exit_score()
             if exit_score >= self.exit_threshold:
                 try:
                     self.position.close()
-                    if hasattr(self, 'high_watermark'):
-                        del self.high_watermark
                 except Exception:
                     try:
                         self.sell()
-                        if hasattr(self, 'high_watermark'):
-                            del self.high_watermark
                     except Exception:
                         pass
 
@@ -369,31 +353,29 @@ def run(path):
     #'''
     stats, heatmap = bt.optimize(
         weight_1=[0.15, 0.2, 0.25],
-        weight_2=[0.1, 0.15, 0.2],
+        weight_2=[0.15,0.2, 0.25, 0.3],
         weight_3=[0.2, 0.25, 0.3],
-        weight_4=[0.2, 0.25, 0.3, 0.35],
-        weight_doji=[0.2, 0.25, 0.3, 0.35],
-        weight_volume=[0.05, 0.1, 0.15],
-        entry_threshold=[0.65, 0.7, 0.75],
+        weight_4=[0.25, 0.3, 0.35],
+        weight_doji=[0.25, 0.3, 0.35],
+        weight_volume= [0, 0.05, 0.1, 0.15],
+        entry_threshold=[0.65, 0.7, 0.75, 0.8],
         exit_threshold=[1.1, 1.2, 1.3],
-        stop_atr_mult=[1.0, 1.5, 2.0],
-        trailing_atr_mult=[4.0, 4.5, 5.0, 5.5, 6.0],
+        stop_atr_mult=[1.0, 1.5, 2.0],        
         maximize='Return [%]',
         return_heatmap=True
-    )   
+    )
     #'''
     '''
     stats, heatmap = bt.optimize(
-        weight_1=0.2,
-        weight_2=0.15,
-        weight_3=0.3,
-        weight_4=0.3,
-        weight_doji=0.3,
-        weight_volume= 0.05,
+        weight_1=[0.2, 0.25],
+        weight_2=0.25,
+        weight_3=0.25,
+        weight_4=0.25,
+        weight_doji=0.25,
+        weight_volume= 0.1,
         entry_threshold=[0.7, 0.9],
-        exit_threshold=[1.1, 1.2],
-        stop_atr_mult=[1.5, 2.0, 2.5],
-        trailing_atr_mult=[3.0, 4.0],        
+        exit_threshold=[1.0, 1.2],
+        stop_atr_mult=[2.0, 3.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
@@ -409,7 +391,7 @@ def run(path):
     print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
     print(f"  weight_doji: {st.weight_doji} | weight_volume: {st.weight_volume}")
     print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
-    print(f"  stop_atr_mult: {st.stop_atr_mult} | trailing_atr_mult: {st.trailing_atr_mult}")
+    print(f"  stop_atr_mult: {st.stop_atr_mult}")
     
     plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
     heatmap_filename = f"HeikinAshi_heatmap_{date.today()}.html"

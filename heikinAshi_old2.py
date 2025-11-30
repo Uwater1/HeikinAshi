@@ -1,6 +1,7 @@
-# HeikinAshi_Optimized.py
-# Optimized with 4-Bar Lookback, Normalized Weights, Dual Stop Loss, and Smart Entries
-# Usage: python HeikinAshi_Optimized.py {data}.csv
+heikinAshi.py
+# HeikinAshi_Combined.py
+# Combined implementation with Numba optimization and weighted strategy
+# Usage: python HeikinAshi_Combined.py {data}.csv
 
 import numpy as np
 import pandas as pd
@@ -15,93 +16,140 @@ from numba import jit
 from backtesting import Backtest, Strategy
 from backtesting.lib import plot_heatmaps
 
-# Silence tqdm progress bars
+# Silence tqdm progress bars emitted by Backtest.run / optimize
 os.environ.setdefault("TQDM_DISABLE", "1")
+
+# Limit third-party logging noise to errors only
 logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
 
-# Linux/Mac multiprocessing fix
 if os.name == 'posix' and __name__ == '__main__':
     try:
         mp.set_start_method('fork', force=True)
     except RuntimeError:
-        pass
+        pass  # Already set
 
 # ========================================
-# Numba-Optimized Math Core
+# Numba-Optimized Functions
 # ========================================
 
 @jit(nopython=True, cache=True)
 def _compute_tr_numba(high, low, close):
+    """Numba-optimized true range calculation."""
     n = len(close)
     tr = np.empty(n)
-    tr[0] = high[0] - low[0]
-    for i in range(1, n):
-        tr[i] = max(high[i] - low[i],
-                    abs(high[i] - close[i-1]),
-                    abs(low[i] - close[i-1]))
+    for i in range(n):
+        if i == 0:
+            tr[i] = high[i] - low[i]
+        else:
+            tr[i] = max(high[i] - low[i],
+                        abs(high[i] - close[i-1]),
+                        abs(low[i] - close[i-1]))
     return tr
 
-@jit(nopython=True, cache=True)
-def _compute_ha_numba(o, h, l, c):
-    n = len(c)
-    ha_o = np.empty(n)
-    ha_c = np.empty(n)
-    ha_h = np.empty(n)
-    ha_l = np.empty(n)
-    
-    # Initialize first candle
-    ha_c[0] = (o[0] + h[0] + l[0] + c[0]) / 4.0
-    ha_o[0] = (o[0] + c[0]) / 2.0
-    ha_h[0] = h[0]
-    ha_l[0] = l[0]
-    
-    for i in range(1, n):
-        ha_c[i] = (o[i] + h[i] + l[i] + c[i]) / 4.0
-        ha_o[i] = (ha_o[i-1] + ha_c[i-1]) / 2.0
-        ha_h[i] = max(h[i], ha_o[i], ha_c[i])
-        ha_l[i] = min(l[i], ha_o[i], ha_c[i])
-        
-    return ha_o, ha_h, ha_l, ha_c
 
 @jit(nopython=True, cache=True)
-def _calc_weighted_score(ha_open, ha_close, atr_arr, weights, idx):
-    """
-    Calculates the 'Trend Strength Ratio' using 4 bars.
-    Returns: (Weighted Average Body Size) / ATR
-    Range is typically -2.0 to 2.0. Positive = Bullish.
-    """
-    score_numerator = 0.0
-    weight_sum = 0.0
+def _compute_heikin_ashi_numba(o, h, l, c):
+    """Numba-optimized Heikin-Ashi calculation."""
+    n = len(c)
+    ha_open = np.empty(n)
+    ha_close = np.empty(n)
+    ha_high = np.empty(n)
+    ha_low = np.empty(n)
     
-    # weights is array: [w_recent, w_mid1, w_mid2, w_old] (lookback 4)
-    # idx is current index. We look at idx, idx-1, idx-2, idx-3
+    for i in range(n):
+        ha_c = (o[i] + h[i] + l[i] + c[i]) / 4.0
+        if i == 0:
+            ha_o = (o[i] + c[i]) / 2.0
+        else:
+            ha_o = (ha_open[i-1] + ha_close[i-1]) / 2.0
+        
+        ha_h = max(h[i], ha_o, ha_c)
+        ha_l = min(l[i], ha_o, ha_c)
+        
+        ha_open[i] = ha_o
+        ha_close[i] = ha_c
+        ha_high[i] = ha_h
+        ha_low[i] = ha_l
     
-    # Check bounds
-    if idx < 3:
-        return 0.0
+    return ha_open, ha_high, ha_low, ha_close
+
+
+@jit(nopython=True, cache=True)
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vol, vol_ma_period, weight_doji, weight_volume, is_entry=True):
+    """Numba-optimized score calculation for entry/exit."""
+    score = 0.0
+    lookback = 4
+    
+    for i in range(lookback):
+        idx = -(i + 1)
+        ha_o = ha_open[idx]
+        ha_c = ha_close[idx]
+        body = ha_c - ha_o
         
-    atr = atr_arr[idx]
-    if atr <= 0: 
-        atr = 1.0
+        if is_entry:
+            if body > 0:  # green candle
+                norm_body = body / atr_cur
+                if norm_body > 3.0:
+                    norm_body = 3.0
+                score += weights[i] * norm_body
+        else:
+            body = ha_o - ha_c  # positive if red
+            if body > 0:
+                norm_body = body / atr_cur
+                if norm_body > 3.0:
+                    norm_body = 3.0
+                score += weights[i] * norm_body
+    
+    # Doji bonus: check bar -6
+    try:
+        prior_idx = -6
+        prior_body = abs(ha_close[prior_idx] - ha_open[prior_idx])
+        if prior_body < doji_body_frac * atr_cur:
+            if is_entry:
+                if ha_close[prior_idx] < ha_open[prior_idx]:
+                    score += weight_doji
+            else:
+                if ha_close[prior_idx] > ha_open[prior_idx]:
+                    score += weight_doji
+    except:
+        pass
+    
+    # Volume bonus
+    try:
+        vol_cur = vol[-1]
+        if len(vol) >= vol_ma_period + 1:
+            vol_ma = 0.0
+            cnt = 0
+            for v in vol[-(vol_ma_period + 1):-1]:
+                if not np.isnan(v):
+                    vol_ma += v
+                    cnt += 1
+            if cnt > 0:
+                vol_ma /= cnt
+        else:
+            vol_ma = 0.0
+            cnt = 0
+            for v in vol:
+                if not np.isnan(v):
+                    vol_ma += v
+                    cnt += 1
+            if cnt > 0:
+                vol_ma /= cnt
         
-    # Iterate backwards: 0=recent, 1=mid1, 2=mid2, 3=old
-    for i in range(4):
-        curr_idx = idx - i
-        # Calculate Body (Close - Open)
-        body = ha_close[curr_idx] - ha_open[curr_idx]
-        
-        # Add to weighted sum
-        score_numerator += body * weights[i]
-        weight_sum += weights[i]
-        
-    if weight_sum == 0:
-        return 0.0
-        
-    avg_body = score_numerator / weight_sum
-    return avg_body / atr
+        if vol_ma > 0 and vol_cur > 1.2 * vol_ma:
+            if is_entry:
+                score += weight_volume
+            else:
+                # Exit volume bonus only on red bars
+                if ha_close[-1] < ha_open[-1]:
+                    score += weight_volume
+    except:
+        pass
+    
+    return score
 
 # ========================================
-# Data Processing (User Provided)
+# Data Loading
 # ========================================
 
 def load_csv(path):
@@ -115,249 +163,253 @@ def load_csv(path):
     df = df.dropna()
     return df
 
-def prepare_data(path):
-    # Wrapper to add indicators to the user's load_csv
-    df = load_csv(path)
+# ========================================
+# Indicator Functions
+# ========================================
+
+def indicator_atr(high, low, close, length=14):
+    """ATR with Numba optimization."""
+    high = np.asarray(high, dtype=np.float32)
+    low = np.asarray(low, dtype=np.float32)
+    close = np.asarray(close, dtype=np.float32)
     
-    # Compute ATR using pandas rolling
-    h, l, c = df.High.values, df.Low.values, df.Close.values
-    tr = _compute_tr_numba(h, l, c)
-    atr = pd.Series(tr, index=df.index).rolling(window=14).mean()
-    df['ATR'] = atr
-    
-    # Compute Heikin Ashi
-    hao, hah, hal, hac = _compute_ha_numba(
-        df.Open.values, df.High.values, df.Low.values, df.Close.values
-    )
-    df['HA_Open'] = hao
-    df['HA_High'] = hah
-    df['HA_Low'] = hal
-    df['HA_Close'] = hac
-    
-    # Drop only rows where ATR is NaN (first 13 rows)
-    df = df.dropna(subset=['ATR'])
+    tr = _compute_tr_numba(high, low, close)
+    atr = pd.Series(tr).rolling(window=length, min_periods=1).mean().to_numpy()
+    return atr
+
+
+def compute_heikin_ashi(df):
+    """Compute Heikin-Ashi candles and add to dataframe."""
+    try:
+        ha = ta.ha(df['Open'], df['High'], df['Low'], df['Close'])
+        df['HA_open'] = ha.iloc[:, 0].values
+        df['HA_high'] = ha.iloc[:, 1].values
+        df['HA_low'] = ha.iloc[:, 2].values
+        df['HA_close'] = ha.iloc[:, 3].values
+    except Exception:
+        # Fallback with Numba optimization
+        ha_open, ha_high, ha_low, ha_close = _compute_heikin_ashi_numba(
+            df['Open'].to_numpy(),
+            df['High'].to_numpy(),
+            df['Low'].to_numpy(),
+            df['Close'].to_numpy()
+        )
+        df['HA_open'] = ha_open
+        df['HA_high'] = ha_high
+        df['HA_low'] = ha_low
+        df['HA_close'] = ha_close
     return df
 
 # ========================================
-# Advanced Strategy
+# Strategy
 # ========================================
 
-class OptimizedHeikinAshi(Strategy):
-    """
-    Optimized Heikin Ashi Strategy
-    1. Normalized Weights (Body % of ATR) using 4 Bars
-    2. Separate Entry vs Exit hardness
-    3. Dual Stops (Fixed + Trailing)
-    4. Smart Stop Orders for 'Anticipated' entry
-    """
+class HeikinAshiWeightedStrategy(Strategy):
+    """Weighted Heikin-Ashi trend-following strategy."""
     
-    # --- Optimization Parameters ---
-    
-    # Entry Weights (0=Recent ... 3=Oldest)
-    entry_w1 = 0.4
-    entry_w2 = 0.3
-    entry_w3 = 0.2
-    entry_w4 = 0.1
-    
-    # Exit Weights (Separate hardness)
-    exit_w1 = 0.5
-    exit_w2 = 0.3
-    exit_w3 = 0.1
-    exit_w4 = 0.1
-    
-    # Thresholds (Normalized: 0.5 = 50% ATR avg body)
-    entry_thresh = 0.6
-    exit_thresh = 0.4
-    
-    # Stops
-    fixed_stop_mult = 3.0
-    trail_stop_mult = 2.0
-    
-    # Smart Entry: If score is within X% of threshold, place Stop Order
-    anticipation_factor = 0.9 
+    # ATR period
+    atr_period = 14
+
+    # Candle weights (later candles contribute more)
+    weight_1 = 0.15
+    weight_2 = 0.20
+    weight_3 = 0.25
+    weight_4 = 0.30
+
+    # Bonuses
+    weight_doji = 0.20
+    weight_volume = 0.20
+
+    # Thresholds
+    entry_threshold = 1.0
+    exit_threshold = 1.0
+
+    # Stop in ATR multiples
+    stop_atr_mult = 2.0
+
+    # Doji threshold (fraction of ATR)
+    doji_body_frac = 0.20
+
+    # Volume lookback for MA
+    vol_ma_period = 20
 
     def init(self):
-        # Pre-cast arrays for Numba speed
-        self.hao = self.I(lambda: self.data.HA_Open, name="HA_Open")
-        self.hac = self.I(lambda: self.data.HA_Close, name="HA_Close")
-        self.atr = self.I(lambda: self.data.ATR, name="ATR")
-        
-        # Track Highest High for Trailing Stop
-        self.highest_high = 0.0
+        # Register ATR indicator
+        self.atr = self.I(lambda: indicator_atr(
+            self.data.High, 
+            self.data.Low, 
+            self.data.Close, 
+            self.atr_period
+        ))
+
+        # Register HA columns as indicators
+        self.ha_open = self.I(lambda: np.asarray(self.data.HA_open, dtype=np.float32))
+        self.ha_close = self.I(lambda: np.asarray(self.data.HA_close, dtype=np.float32))
+        self.ha_high = self.I(lambda: np.asarray(self.data.HA_high, dtype=np.float32))
+        self.ha_low = self.I(lambda: np.asarray(self.data.HA_low, dtype=np.float32))
+
+        # Volume array accessor
+        self.vol = self.I(lambda: np.asarray(self.data.Volume, dtype=np.float32))
+
+    def _is_green(self, idx):
+        """Check if candle at idx is green."""
+        return float(self.ha_close[idx]) > float(self.ha_open[idx])
+
+    def _is_red(self, idx):
+        """Check if candle at idx is red."""
+        return float(self.ha_close[idx]) < float(self.ha_open[idx])
+
+    def _ha_body(self, idx):
+        """Get HA body size at idx."""
+        return float(self.ha_close[idx]) - float(self.ha_open[idx])
+
+    def compute_entry_score(self):
+        """Compute weighted entry score using up to 4 most recent HA candles."""
+        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
+        if atr_cur <= 0:
+            atr_cur = 1.0
+
+        weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
+        return float(_compute_score_numba(
+            self.ha_open, self.ha_close, np.float32(atr_cur), weights,
+            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
+            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            is_entry=True
+        ))
+
+    def compute_exit_score(self):
+        """Compute weighted exit score using up to 4 most recent HA candles."""
+        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
+        if atr_cur <= 0:
+            atr_cur = 1.0
+
+        weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
+        return float(_compute_score_numba(
+            self.ha_open, self.ha_close, np.float32(atr_cur), weights,
+            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
+            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            is_entry=False
+        ))
 
     def next(self):
-        idx = len(self.data) - 1
-        if idx < 10: return
-        
-        atr = self.atr[-1]
-        close = self.data.Close[-1]
-        high = self.data.High[-1]
-        low = self.data.Low[-1]
-        
-        # --- 1. Compute Scores (4-Bar Lookback) ---
-        
-        # Entry Score
-        w_entry = np.array([self.entry_w1, self.entry_w2, self.entry_w3, self.entry_w4], dtype=np.float64)
-        entry_score = _calc_weighted_score(self.hao, self.hac, self.atr, w_entry, idx)
-        
-        # Exit Score (Separate Weights)
-        w_exit = np.array([self.exit_w1, self.exit_w2, self.exit_w3, self.exit_w4], dtype=np.float64)
-        raw_exit_score = _calc_weighted_score(self.hao, self.hac, self.atr, w_exit, idx)
-        
-        # --- 2. Position Management (Exit) ---
-        
-        if self.position:
-            # Update Highest High for Trailing Stop
-            if high > self.highest_high:
-                self.highest_high = high
-                
-            # A. Trailing Stop Logic (Chandelier Exit)
-            trail_price = self.highest_high - (self.trail_stop_mult * atr)
-            
-            # B. Fixed Stop Logic & Update
-            for trade in self.trades:
-                current_sl = trade.sl if trade.sl else 0
-                # Move stop UP only
-                new_sl = max(current_sl, trail_price)
-                trade.sl = new_sl
+        """Execute strategy logic on each bar."""
+        price = float(self.data.Close[-1])
+        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 0.0)
 
-            # C. Signal Exit (Soft Exit based on Heikin Ashi Reversal)
-            # If trend turns Red (negative score) and magnitude > threshold
-            if raw_exit_score < -self.exit_thresh:
-                self.position.close()
-                return
-
-        # --- 3. Entry Logic ---
-        
+        # Entry logic
         if not self.position:
-            # Reset Highest High tracking
-            self.highest_high = high
-            
-            # Standard Fixed Stop distance
-            stop_dist = self.fixed_stop_mult * atr
-            
-            # A. Standard Strong Entry (Close > Threshold)
-            if entry_score >= self.entry_thresh:
-                sl_price = close - stop_dist
-                # Ensure stop loss is positive
-                if sl_price > 0:
+            entry_score = self.compute_entry_score()
+
+            if entry_score >= self.entry_threshold:
+                sl_price = max(0.0, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else max(0.0, price * 0.98)
+                
+                try:
                     self.buy(sl=sl_price)
-                
-            # B. Anticipatory Entry (Smart Stop Order)
-            # Logic: If we are close (anticipation_factor), place a STOP order slightly above High.
-            # This captures the breakout ("Wanted Price") needed to confirm the trend.
-            elif entry_score > (self.entry_thresh * self.anticipation_factor):
-                
-                wanted_price = high + (0.1 * atr) 
-                sl_price = wanted_price - stop_dist
-                
-                # Ensure stop loss is positive
-                if sl_price > 0:
-                    # Valid only for next bar
-                    self.buy(stop=wanted_price, sl=sl_price)
+                except Exception:
+                    self.buy()
+
+        # Exit logic
+        else:
+            exit_score = self.compute_exit_score()
+            if exit_score >= self.exit_threshold:
+                try:
+                    self.position.close()
+                except Exception:
+                    try:
+                        self.sell()
+                    except Exception:
+                        pass
 
 # ========================================
-# Execution
+# Main Backtest Runner
 # ========================================
 
-def run_optimization(path):
-    print(f"Loading {path}...")
-    df = prepare_data(path)
+def run(path):
+    """Load data, run backtest with optimization."""
+    # print("Loading data...")
+    df = load_csv(path)
     
-    bt = Backtest(df, OptimizedHeikinAshi, cash=100000, commission=0.001)
+    # print("Computing Heikin-Ashi...")
+    df = compute_heikin_ashi(df)
     
-    print("Starting Optimization (Targeting ~250k iterations)...")
+    # Prepare dataframe for backtesting
+    df_bt = df[['Open', 'High', 'Low', 'Close', 'Volume',
+                'HA_open', 'HA_high', 'HA_low', 'HA_close']].copy()
+    df_bt.index = pd.to_datetime(df_bt.index)
     
-    # Optimization Space
-    # Refined based on previous result: older weights (w3, w4) were significant.
-    # Entry Weights: 3*3*3*3 = 81
-    # Exit Weights: 2*2*2*1 = 8
-    # Thresholds: 5 * 3 = 15
-    # Stops: 3 * 3 = 9
-    # Anticipation: 3
-    # Total: 81 * 8 * 15 * 9 * 3 = 262,440 iterations.
+    # print("Initializing backtest...")
+    bt = Backtest(df_bt, HeikinAshiWeightedStrategy,
+                  cash=100000,
+                  commission=0.001,
+                  exclusive_orders=True,
+                  finalize_trades=True) # Just to prevent extra log
     
-    '''  
-    stats, heatmap = bt.optimize(  
-        # Entry Weights (Focus on granularity)
-        entry_w1 = [0.1, 0.2, 0.3], 
-        entry_w2 = [0.1, 0.2, 0.3],
-        entry_w3 = [0.2, 0.3, 0.4], # Weighted higher based on previous results
-        entry_w4 = [0.2, 0.3, 0.4], # Weighted higher based on previous results
-        
-        # Exit Weights (Simpler)
-        exit_w1 = [0.5, 0.7],       # Exit needs fast reaction (recent weights higher)
-        exit_w2 = [0.2, 0.3],
-        exit_w3 = [0.1, 0.2],
-        exit_w4 = [0.1],
-        
-        # Thresholds (Normalized Units)
-        entry_thresh = [0.4, 0.5, 0.6, 0.7, 0.8],
-        exit_thresh  = [0.2, 0.3, 0.4],
-        
-        # Stops
-        trail_stop_mult = [2.0, 3.0, 4.0],
-        fixed_stop_mult = [2.0, 3.0, 4.0],
-        
-        # Smart Entry
-        anticipation_factor = [0.85, 0.9, 0.95],
-        
+    # Set low process priority
+    try:
+        p = psutil.Process(os.getpid())
+        p.nice(0)
+    except Exception as e:
+        print(f"Warning: Could not set process priority: {e}\n")
+
+    #'''
+    stats, heatmap = bt.optimize(
+        weight_1=[0.15, 0.2, 0.25, 0.3],
+        weight_2=[0.15,0.2, 0.25, 0.3],
+        weight_3=[0.2, 0.25, 0.3],
+        weight_4=[0.15, 0.2, 0.25, 0.3],
+        weight_doji=[0.15, 0.2, 0.25, 0.3],
+        weight_volume= [0.05, 0.1, 0.15],
+        entry_threshold=[0.65, 0.7, 0.75, 0.8],
+        exit_threshold=[1.0, 1.1, 1.2, 1.3],
+        stop_atr_mult=[1.5, 2.0, 2.5, 3.0],        
+        maximize='Return [%]',
+        return_heatmap=True
+    )
+    #'''
+    '''
+    stats, heatmap = bt.optimize(
+        weight_1=[0.2, 0.25],
+        weight_2=0.25,
+        weight_3=0.25,
+        weight_4=0.25,
+        weight_doji=0.25,
+        weight_volume= 0.1,
+        entry_threshold=[0.7, 0.9],
+        exit_threshold=[1.0, 1.2],
+        stop_atr_mult=[2.0, 3.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
     '''
 
-    stats, heatmap = bt.optimize(  
-        # Entry Weights (Focus on granularity)
-        entry_w1 = 0.3, 
-        entry_w2 = 0.3,
-        entry_w3 = 0.4, # Weighted higher based on previous results
-        entry_w4 = 0.4, # Weighted higher based on previous results
-        
-        # Exit Weights (Simpler)
-        exit_w1 = 0.7,       # Exit needs fast reaction (recent weights higher)
-        exit_w2 = 0.3,
-        exit_w3 = 0.2,
-        exit_w4 = 0.1,
-        
-        # Thresholds (Normalized Units)
-        entry_thresh = [0.4, 0.5, 0.6, 0.7, 0.8],
-        exit_thresh  = [0.2, 0.3, 0.4],
-        
-        # Stops
-        trail_stop_mult = 4.0,
-        fixed_stop_mult = 2.0,
-        
-        # Smart Entry
-        anticipation_factor = [0.85, 0.9, 0.95],
-        
-        maximize='Return [%]',
-        return_heatmap=True
-    )
     
-    print("\n--- Optimization Complete ---")
+    print("--- Optimization Complete ---\n")
     print(stats)
     
     print("\n--- Best Parameters ---")
     st = stats._strategy
-    print(f"  Entry Weights: {st.entry_w1}, {st.entry_w2}, {st.entry_w3}, {st.entry_w4}")
-    print(f"  Exit Weights: {st.exit_w1}, {st.exit_w2}, {st.exit_w3}, {st.exit_w4}")
-    print(f"  Thresholds: Entry {st.entry_thresh} | Exit {st.exit_thresh}")
-    print(f"  Stops: Fixed {st.fixed_stop_mult} | Trail {st.trail_stop_mult}")
-    print(f"  Anticipation: {st.anticipation_factor}")
+    print(f"  weight_1: {st.weight_1} | weight_2: {st.weight_2}")
+    print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
+    print(f"  weight_doji: {st.weight_doji} | weight_volume: {st.weight_volume}")
+    print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
+    print(f"  stop_atr_mult: {st.stop_atr_mult}")
     
-    # Required Output Format
     plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
     heatmap_filename = f"HeikinAshi_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
-    print("\n--- Top 120 parameter sets (by Return [%]): (.csv) ---")
-    top_df = heatmap.sort_values(ascending=False).iloc[:120].reset_index()
+    print("\n--- Top 150 parameter sets (by Return [%]): (.csv) ---")
+    top_df = heatmap.sort_values(ascending=False).iloc[:150].reset_index()
     print(top_df.to_csv(index=False,float_format='%.2f'))
+
+# ========================================
+# CLI Entry Point
+# ========================================
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python heikinAshi_Optimized.py {data}.csv")
+        print("Usage: python HeikinAshi_Combined.py {data}.csv")
+        sys.exit(1)
     else:
-        run_optimization(sys.argv[1])
+        run(sys.argv[1])
