@@ -1,11 +1,3 @@
-Loading data...
-Computing Heikin-Ashi...
-Initializing backtest...
-✓ Process priority set to low
-
---- Starting Optimization ---
-This may take 10-20 minutes depending on your system...
-
 
 --- Optimization Complete ---
 
@@ -47,16 +39,30 @@ _trades                       Size  EntryB...
 dtype: object
 
 --- Best Parameters ---
-  weight_1: 0.2
-  weight_2: 0.25
-  weight_3: 0.25
-  weight_4: 0.25
-  weight_doji: 0.25
-  weight_volume: 0.1
-  entry_threshold: 0.9
-  exit_threshold: 1.2
+  weight_1: 0.2 | weight_2: 0.25
+  weight_3: 0.25 | weight_4: 0.25
+  weight_doji: 0.25 | weight_volume: 0.1
+  entry_threshold: 0.9 | exit_threshold: 1.2
   stop_atr_mult: 2.0
+Plot saved as: HeikinAshi_optimized_2025-11-29.html  ||  Heatmap saved as: HeikinAshi_heatmap_2025-11-29.html
 
-Plotting results...
-Plot saved as: HeikinAshi_optimized_2025-11-29.html
-Heatmap saved as: HeikinAshi_heatmap_2025-11-29.html
+
+--- Top 100 parameter sets (by Return [%]): (.csv) ---
+weight_1,weight_2,weight_3,weight_4,weight_doji,weight_volume,entry_threshold,exit_threshold,stop_atr_mult,Return [%]
+0.2,0.25,0.25,0.25,0.25,0.1,0.9,1.2,2.0,176.33531496184023
+0.2,0.25,0.25,0.25,0.25,0.1,0.7,1.2,3.0,149.93084752493843
+0.2,0.25,0.25,0.25,0.25,0.1,0.7,1.2,2.0,149.62664198487357
+0.2,0.25,0.25,0.25,0.25,0.1,0.9,1.2,3.0,134.8250961802724
+0.25,0.25,0.25,0.25,0.25,0.1,0.9,1.2,2.0,117.27528609854834
+0.25,0.25,0.25,0.25,0.25,0.1,0.7,1.2,2.0,96.96049536051939
+0.25,0.25,0.25,0.25,0.25,0.1,0.7,1.2,3.0,91.81197365788405
+0.2,0.25,0.25,0.25,0.25,0.1,0.7,1.0,2.0,85.8272843029424
+0.2,0.25,0.25,0.25,0.25,0.1,0.7,1.0,3.0,84.70517968893063
+0.25,0.25,0.25,0.25,0.25,0.1,0.9,1.2,3.0,82.37369770039226
+0.2,0.25,0.25,0.25,0.25,0.1,0.9,1.0,2.0,74.64049041551554
+0.25,0.25,0.25,0.25,0.25,0.1,0.7,1.0,3.0,70.57037615317877
+0.25,0.25,0.25,0.25,0.25,0.1,0.9,1.0,2.0,68.85975660960158
+0.25,0.25,0.25,0.25,0.25,0.1,0.9,1.0,3.0,67.08310970866718
+0.25,0.25,0.25,0.25,0.25,0.1,0.7,1.0,2.0,66.37408209661734
+0.2,0.25,0.25,0.25,0.25,0.1,0.9,1.0,3.0,50.32890261839511
+

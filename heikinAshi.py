@@ -325,10 +325,10 @@ class HeikinAshiWeightedStrategy(Strategy):
 
 def run(path):
     """Load data, run backtest with optimization."""
-    print("Loading data...")
+    # print("Loading data...")
     df = load_csv(path)
     
-    print("Computing Heikin-Ashi...")
+    # print("Computing Heikin-Ashi...")
     df = compute_heikin_ashi(df)
     
     # Prepare dataframe for backtesting
@@ -336,7 +336,7 @@ def run(path):
                 'HA_open', 'HA_high', 'HA_low', 'HA_close']].copy()
     df_bt.index = pd.to_datetime(df_bt.index)
     
-    print("Initializing backtest...")
+    # print("Initializing backtest...")
     bt = Backtest(df_bt, HeikinAshiWeightedStrategy,
                   cash=100000,
                   commission=0.001,
@@ -346,13 +346,9 @@ def run(path):
     # Set low process priority
     try:
         p = psutil.Process(os.getpid())
-        p.nice(10)
-        print("✓ Process priority set to low\n")
+        p.nice(0)
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
-    
-    print("--- Starting Optimization ---")
-    print("This may take 10-20 minutes depending on your system...\n")
 
     #'''
     stats, heatmap = bt.optimize(
@@ -391,23 +387,20 @@ def run(path):
     
     print("\n--- Best Parameters ---")
     st = stats._strategy
-    print(f"  weight_1: {st.weight_1}")
-    print(f"  weight_2: {st.weight_2}")
-    print(f"  weight_3: {st.weight_3}")
-    print(f"  weight_4: {st.weight_4}")
-    print(f"  weight_doji: {st.weight_doji}")
-    print(f"  weight_volume: {st.weight_volume}")
-    print(f"  entry_threshold: {st.entry_threshold}")
-    print(f"  exit_threshold: {st.exit_threshold}")
+    print(f"  weight_1: {st.weight_1} | weight_2: {st.weight_2}")
+    print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
+    print(f"  weight_doji: {st.weight_doji} | weight_volume: {st.weight_volume}")
+    print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
     
-    print("\nPlotting results...")
     plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
     heatmap_filename = f"HeikinAshi_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
-    print(f"Plot saved as: {plot_filename}")
-    print(f"Heatmap saved as: {heatmap_filename}")
+    print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
+    print("\n\n--- Top 100 parameter sets (by Return [%]): (.csv) ---")
+    top_df = heatmap.sort_values(ascending=False).iloc[:100].reset_index()
+    print(top_df.to_csv(index=False))
 
 # ========================================
 # CLI Entry Point
