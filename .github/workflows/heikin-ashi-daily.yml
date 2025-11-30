@@ -10,8 +10,26 @@ env:
   DATE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.date || '' }}
 
 jobs:
+  check-manual-runs:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    outputs:
+      manual-running: ${{ steps.check.outputs.manual-running }}
+    steps:
+      - name: Check for running manual workflows
+        id: check
+        run: |
+          # Check if any manual workflow is currently running
+          # This uses GitHub API to check workflow runs
+          MANUAL_RUNNING=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?event=workflow_dispatch&status=in_progress" | \
+            jq -r '.workflow_runs | length > 0')
+          echo "manual-running=$MANUAL_RUNNING" >> $GITHUB_OUTPUT
+
   run-if-heikinashi-changed:
     runs-on: ubuntu-latest
+    needs: [check-manual-runs]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && needs.check-manual-runs.outputs.manual-running == 'false')
     permissions:
       contents: read
       packages: read
