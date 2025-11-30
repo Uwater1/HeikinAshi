@@ -350,7 +350,7 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    #'''
+    ''
     stats, heatmap = bt.optimize(
         weight_1=[0.15, 0.2, 0.25, 0.3],
         weight_2=[0.15,0.2, 0.25, 0.3],
@@ -362,10 +362,11 @@ def run(path):
         exit_threshold=[1.0, 1.1, 1.2, 1.3],
         stop_atr_mult=[1.5, 2.0, 2.5, 3.0],        
         maximize='Return [%]',
-        return_heatmap=True
+        return_heatmap=True,
+        constraint=lambda p: p['# Trades'] > 0  # Ensure valid trades
     )
-    #'''
     '''
+    #'''
     stats, heatmap = bt.optimize(
         weight_1=[0.2, 0.25],
         weight_2=0.25,
@@ -377,9 +378,10 @@ def run(path):
         exit_threshold=[1.0, 1.2],
         stop_atr_mult=[2.0, 3.0],        
         maximize='Return [%]',
-        return_heatmap=True
+        return_heatmap=True,
+        constraint=lambda p: p['# Trades'] > 0  # Ensure valid trades
     )
-    '''
+    #'''
 
     
     print("--- Optimization Complete ---\n")
@@ -400,7 +402,10 @@ def run(path):
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
     print("\n--- Top 120 parameter sets (by Return [%]): (.csv) ---")
     top_df = heatmap.sort_values(ascending=False).iloc[:120].reset_index()
-    print(top_df.to_csv(index=False))
+    # Reorder columns to include key metrics
+    cols = ['Return [%]', 'Sharpe Ratio', '# Trades', 'Win Rate [%]'] + [c for c in top_df.columns if c not in ['Return [%]', 'Sharpe Ratio', '# Trades', 'Win Rate [%]']]
+    top_df = top_df[cols]
+    print(top_df.to_csv(index=False,float_format='%.2f'))
 
 # ========================================
 # CLI Entry Point
