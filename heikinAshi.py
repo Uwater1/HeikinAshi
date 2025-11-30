@@ -382,7 +382,7 @@ def run(path):
     '''
 
     
-    print("\n--- Optimization Complete ---\n")
+    print("--- Optimization Complete ---\n")
     print(stats)
     
     print("\n--- Best Parameters ---")
@@ -398,8 +398,8 @@ def run(path):
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
-    print("\n\n--- Top 100 parameter sets (by Return [%]): (.csv) ---")
-    top_df = heatmap.sort_values(ascending=False).iloc[:100].reset_index()
+    print("\n--- Top 120 parameter sets (by Return [%]): (.csv) ---")
+    top_df = heatmap.sort_values(ascending=False).iloc[:120].reset_index()
     print(top_df.to_csv(index=False))
 
 # ========================================
