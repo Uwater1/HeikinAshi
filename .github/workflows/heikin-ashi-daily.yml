@@ -156,6 +156,7 @@ jobs:
           files: |
             heikinAshi_${{ env.DATE }}.txt
             *.html
+            heikinAshi.py
           draft: false
           prerelease: false
         env:
