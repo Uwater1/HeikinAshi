@@ -369,15 +369,15 @@ def run(path):
     #'''
     stats, heatmap = bt.optimize(
         weight_1=[0.15, 0.2, 0.25],
-        weight_2=[0.15, 0.2, 0.25],
+        weight_2=[0.1, 0.15, 0.2],
         weight_3=[0.2, 0.25, 0.3],
-        weight_4=[0.2, 0.25, 0.3],
+        weight_4=[0.2, 0.25, 0.3, 0.35],
         weight_doji=[0.2, 0.25, 0.3, 0.35],
         weight_volume=[0.05, 0.1, 0.15],
-        entry_threshold=[0.65, 0.7, 0.75, 0.8],
-        exit_threshold=[1.0, 1.1, 1.2, 1.3],
-        stop_atr_mult=[1.0, 1.5, 2.0, 2.5, 3.0],
-        trailing_atr_mult=[2.0, 2.5, 3.0, 3.5, 4.0],
+        entry_threshold=[0.65, 0.7, 0.75],
+        exit_threshold=[1.1, 1.2, 1.3],
+        stop_atr_mult=[1.0, 1.5, 2.0],
+        trailing_atr_mult=[4.0, 4.5, 5.0, 5.5, 6.0],
         maximize='Return [%]',
         return_heatmap=True
     )   
