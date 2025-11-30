@@ -31,7 +31,7 @@ jobs:
     needs: [check-manual-runs]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && needs.check-manual-runs.outputs.manual-running == 'false')
     permissions:
-      contents: read
+      contents: write
       packages: read
 
     steps:
@@ -155,6 +155,29 @@ jobs:
           path: |
             heikinAshi_${{ env.DATE }}.txt
             *.html
+            *.csv
+
+      - name: Create GitHub Release (only if changed)
+        if: steps.check.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: heikinashi-${{ env.DATE }}
+          name: HeikinAshi Report ${{ env.DATE }}
+          body: |
+            Automated HeikinAshi analysis for ${{ env.DATE }}
+            
+            Generated files:
+            - heikinAshi_${{ env.DATE }}.txt
+            - HTML reports
+            - CSV data files
+          files: |
+            heikinAshi_${{ env.DATE }}.txt
+            *.html
+            *.csv
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Optional: commit the generated file back to the repository.
       # WARNING: enabling this will make the workflow push to the default branch.
