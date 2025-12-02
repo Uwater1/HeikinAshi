@@ -334,8 +334,9 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    '''
+    #'''
     stats, heatmap = bt.optimize(
+        atr_period = [10, 14, 20, 30],
         weight_1=[0.15, 0.2, 0.25],
         weight_2=[0.15,0.2, 0.25, 0.3],
         weight_3=[0.2, 0.25, 0.3],
@@ -347,8 +348,8 @@ def run(path):
         maximize='Return [%]',
         return_heatmap=True
     )
-    '''
     #'''
+    '''
     stats, heatmap = bt.optimize(
         weight_1=[0.2, 0.25],
         weight_2=0.25,
@@ -361,7 +362,7 @@ def run(path):
         maximize='Return [%]',
         return_heatmap=True
     )
-    #'''
+    '''
 
     
     print("--- Optimization Complete ---\n")
