@@ -126,9 +126,28 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, we
 
 def load_csv(path):
     """Load CSV data and prepare for backtesting."""
-    df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
-    df = df.rename(columns={"Close/Last": "Close"})
-    
+    # Try to detect the CSV format by checking column names
+    try:
+        # First try reading with Date column (IVV.csv format)
+        df = pd.read_csv(path, nrows=5)  # Read just header to detect format
+        if "Date" in df.columns:
+            # IVV.csv format
+            df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
+            df = df.rename(columns={"Close/Last": "Close"})
+        elif "time" in df.columns:
+            # IVV2.csv format
+            df = pd.read_csv(path, parse_dates=["time"], index_col="time")
+            df = df.rename(columns={
+                "open": "Open",
+                "high": "High",
+                "low": "Low",
+                "close": "Close"
+            })
+        else:
+            raise ValueError("Unknown CSV format - neither 'Date' nor 'time' column found")
+    except Exception as e:
+        raise ValueError(f"Failed to load CSV: {e}")
+
     numeric_cols = ["Open", "High", "Low", "Close", "Volume"]
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
     df = df.sort_index()
@@ -321,7 +340,7 @@ def run(path):
         weight_2=[0.15,0.2, 0.25, 0.3],
         weight_3=[0.2, 0.25, 0.3],
         weight_4=[0.25, 0.3, 0.35],
-        weight_doji=[0.25, 0.3, 0.35],
+        weight_doji=[0.25, 0.3, 0.35, 0.4],
         entry_threshold=[0.65, 0.7, 0.75, 0.8],
         exit_threshold=[1.1, 1.2, 1.3],
         stop_atr_mult=[1.3, 1.5, 2.0],
