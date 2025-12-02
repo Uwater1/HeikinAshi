@@ -74,17 +74,22 @@ def _compute_heikin_ashi_numba(o, h, l, c):
 
 
 @jit(nopython=True, cache=True)
-def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vol, vol_ma_period, weight_doji, weight_volume, is_entry=True):
-    """Numba-optimized score calculation for entry/exit."""
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, weight_doji, is_entry=True):
+    """Numba-optimized score calculation for entry/exit.
+    # Calculates weighted trading score based on:
+    # - Recent 4 HA candles (body size normalized by ATR, weighted by recency)
+    # - Doji patterns at position -6 (bonus for bullish/bearish confirmation)
+    # Returns composite score used for entry/exit decisions when exceeding thresholds
+    """
     score = 0.0
     lookback = 4
-    
+
     for i in range(lookback):
         idx = -(i + 1)
         ha_o = ha_open[idx]
         ha_c = ha_close[idx]
         body = ha_c - ha_o
-        
+
         if is_entry:
             if body > 0:  # green candle
                 norm_body = body / atr_cur
@@ -98,7 +103,7 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vo
                 if norm_body > 3.0:
                     norm_body = 3.0
                 score += weights[i] * norm_body
-    
+
     # Doji bonus: check bar -6
     try:
         prior_idx = -6
@@ -112,39 +117,7 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vo
                     score += weight_doji
     except:
         pass
-    
-    # Volume bonus
-    try:
-        vol_cur = vol[-1]
-        if len(vol) >= vol_ma_period + 1:
-            vol_ma = 0.0
-            cnt = 0
-            for v in vol[-(vol_ma_period + 1):-1]:
-                if not np.isnan(v):
-                    vol_ma += v
-                    cnt += 1
-            if cnt > 0:
-                vol_ma /= cnt
-        else:
-            vol_ma = 0.0
-            cnt = 0
-            for v in vol:
-                if not np.isnan(v):
-                    vol_ma += v
-                    cnt += 1
-            if cnt > 0:
-                vol_ma /= cnt
-        
-        if vol_ma > 0 and vol_cur > 1.2 * vol_ma:
-            if is_entry:
-                score += weight_volume
-            else:
-                # Exit volume bonus only on red bars
-                if ha_close[-1] < ha_open[-1]:
-                    score += weight_volume
-    except:
-        pass
-    
+
     return score
 
 # ========================================
@@ -216,8 +189,7 @@ class HeikinAshiWeightedStrategy(Strategy):
     weight_4 = 0.30
 
     # Bonuses
-    weight_doji = 0.20
-    weight_volume = 0.20
+    weight_doji = 0.30
 
     # Thresholds
     entry_threshold = 1.0
@@ -228,9 +200,6 @@ class HeikinAshiWeightedStrategy(Strategy):
 
     # Doji threshold (fraction of ATR)
     doji_body_frac = 0.20
-
-    # Volume lookback for MA
-    vol_ma_period = 20
 
     def init(self):
         # Register ATR indicator
@@ -247,8 +216,6 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.ha_high = self.I(lambda: np.asarray(self.data.HA_high, dtype=np.float32))
         self.ha_low = self.I(lambda: np.asarray(self.data.HA_low, dtype=np.float32))
 
-        # Volume array accessor
-        self.vol = self.I(lambda: np.asarray(self.data.Volume, dtype=np.float32))
 
     def _is_green(self, idx):
         """Check if candle at idx is green."""
@@ -271,8 +238,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), weights,
-            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
-            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            np.float32(self.doji_body_frac), np.float32(self.weight_doji),
             is_entry=True
         ))
 
@@ -285,8 +251,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), weights,
-            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
-            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            np.float32(self.doji_body_frac), np.float32(self.weight_doji),
             is_entry=False
         ))
 
@@ -350,36 +315,34 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    #'''
+    '''
     stats, heatmap = bt.optimize(
         weight_1=[0.15, 0.2, 0.25],
         weight_2=[0.15,0.2, 0.25, 0.3],
         weight_3=[0.2, 0.25, 0.3],
         weight_4=[0.25, 0.3, 0.35],
         weight_doji=[0.25, 0.3, 0.35],
-        weight_volume= [0, 0.05, 0.1, 0.15],
         entry_threshold=[0.65, 0.7, 0.75, 0.8],
         exit_threshold=[1.1, 1.2, 1.3],
-        stop_atr_mult=[1.3, 1.5, 2.0],        
+        stop_atr_mult=[1.3, 1.5, 2.0],
         maximize='Return [%]',
         return_heatmap=True
     )
-    #'''
     '''
+    #'''
     stats, heatmap = bt.optimize(
         weight_1=[0.2, 0.25],
         weight_2=0.25,
-        weight_3=0.25,
-        weight_4=0.25,
+        weight_3=0.35,
+        weight_4=0.35,
         weight_doji=0.25,
-        weight_volume= 0.1,
         entry_threshold=[0.7, 0.9],
         exit_threshold=[1.0, 1.2],
         stop_atr_mult=[2.0, 3.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
-    '''
+    #'''
 
     
     print("--- Optimization Complete ---\n")
@@ -389,7 +352,7 @@ def run(path):
     st = stats._strategy
     print(f"  weight_1: {st.weight_1} | weight_2: {st.weight_2}")
     print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
-    print(f"  weight_doji: {st.weight_doji} | weight_volume: {st.weight_volume}")
+    print(f"  weight_doji: {st.weight_doji}")
     print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
     
