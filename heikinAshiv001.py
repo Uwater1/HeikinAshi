@@ -1,6 +1,6 @@
-# HeikinAshi_Weighted.py
-# Weighted Bull/Bear implementation with separate entry/exit systems
-# Usage: python HeikinAshi_weighted.py {data}.csv
+# HeikinAshi_Combined.py
+# Combined implementation with Numba optimization and weighted strategy
+# Usage: python HeikinAshi_Combined.py {data}.csv
 
 import numpy as np
 import pandas as pd
@@ -45,6 +45,7 @@ def _compute_tr_numba(high, low, close):
                         abs(low[i] - close[i-1]))
     return tr
 
+
 @jit(nopython=True, cache=True)
 def _compute_heikin_ashi_numba(o, h, l, c):
     """Numba-optimized Heikin-Ashi calculation."""
@@ -53,31 +54,32 @@ def _compute_heikin_ashi_numba(o, h, l, c):
     ha_close = np.empty(n)
     ha_high = np.empty(n)
     ha_low = np.empty(n)
-
+    
     for i in range(n):
         ha_c = (o[i] + h[i] + l[i] + c[i]) / 4.0
         if i == 0:
             ha_o = (o[i] + c[i]) / 2.0
         else:
             ha_o = (ha_open[i-1] + ha_close[i-1]) / 2.0
-
+        
         ha_h = max(h[i], ha_o, ha_c)
         ha_l = min(l[i], ha_o, ha_c)
-
+        
         ha_open[i] = ha_o
         ha_close[i] = ha_c
         ha_high[i] = ha_h
         ha_low[i] = ha_l
-
+    
     return ha_open, ha_high, ha_low, ha_close
 
+
 @jit(nopython=True, cache=True)
-def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_body_frac, is_entry=True):
-    """Numba-optimized score calculation with separate bull/bear weights.
-    Calculates weighted trading score based on:
-    - Recent 4 HA candles (body size normalized by ATR, weighted by recency)
-    - Doji patterns at position -6 (bonus for bullish/bearish confirmation)
-    Returns composite score used for entry/exit decisions when exceeding thresholds
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, weight_doji, is_entry=True):
+    """Numba-optimized score calculation for entry/exit.
+    # Calculates weighted trading score based on:
+    # - Recent 4 HA candles (body size normalized by ATR, weighted by recency)
+    # - Doji patterns at position -6 (bonus for bullish/bearish confirmation)
+    # Returns composite score used for entry/exit decisions when exceeding thresholds
     """
     score = 0.0
     lookback = 4
@@ -109,10 +111,10 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
         if prior_body < doji_body_frac * atr_cur:
             if is_entry:
                 if ha_close[prior_idx] < ha_open[prior_idx]:
-                    score += doji_weight
+                    score += weight_doji
             else:
                 if ha_close[prior_idx] > ha_open[prior_idx]:
-                    score += doji_weight
+                    score += weight_doji
     except:
         pass
 
@@ -161,10 +163,11 @@ def indicator_atr(high, low, close, length=14):
     high = np.asarray(high, dtype=np.float32)
     low = np.asarray(low, dtype=np.float32)
     close = np.asarray(close, dtype=np.float32)
-
+    
     tr = _compute_tr_numba(high, low, close)
     atr = pd.Series(tr).rolling(window=length, min_periods=1).mean().to_numpy()
     return atr
+
 
 def compute_heikin_ashi(df):
     """Compute Heikin-Ashi candles and add to dataframe."""
@@ -193,27 +196,26 @@ def compute_heikin_ashi(df):
 # ========================================
 
 class HeikinAshiWeightedStrategy(Strategy):
-    """Weighted Heikin-Ashi trend-following strategy with separate bull/bear systems."""
-
+    """Weighted Heikin-Ashi trend-following strategy."""
+    
     # ATR period
     atr_period = 14
 
-    # Bull weights for entry (scaled by 0.25 / 0.8 as per user requirement)
-    weight_bull_1 = 0.3
-    weight_bull_2 = 0.25
-    weight_bull_3 = 0.3
-    weight_bull_4 = 0.35
-    weight_bull_doji = 0.4
+    # Candle weights (later candles contribute more)
+    weight_1 = 0.15
+    weight_2 = 0.20
+    weight_3 = 0.25
+    weight_4 = 0.30
 
-    # Bear weights for exit (scaled by 0.25 * 0.8 as per user requirement)
-    weight_bear_1 = 0.25
-    weight_bear_2 = 0.20
-    weight_bear_3 = 0.25
-    weight_bear_4 = 0.30
-    weight_bear_doji = 0.3
+    # Bonuses
+    weight_doji = 0.30
+
+    # Thresholds
+    entry_threshold = 1.0
+    exit_threshold = 1.0
 
     # Stop in ATR multiples
-    stop_atr_mult = 1.5
+    stop_atr_mult = 2.0
 
     # Doji threshold (fraction of ATR)
     doji_body_frac = 0.20
@@ -221,9 +223,9 @@ class HeikinAshiWeightedStrategy(Strategy):
     def init(self):
         # Register ATR indicator
         self.atr = self.I(lambda: indicator_atr(
-            self.data.High,
-            self.data.Low,
-            self.data.Close,
+            self.data.High, 
+            self.data.Low, 
+            self.data.Close, 
             self.atr_period
         ))
 
@@ -232,6 +234,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.ha_close = self.I(lambda: np.asarray(self.data.HA_close, dtype=np.float32))
         self.ha_high = self.I(lambda: np.asarray(self.data.HA_high, dtype=np.float32))
         self.ha_low = self.I(lambda: np.asarray(self.data.HA_low, dtype=np.float32))
+
 
     def _is_green(self, idx):
         """Check if candle at idx is green."""
@@ -246,28 +249,28 @@ class HeikinAshiWeightedStrategy(Strategy):
         return float(self.ha_close[idx]) - float(self.ha_open[idx])
 
     def compute_entry_score(self):
-        """Compute weighted entry score using bull weights."""
+        """Compute weighted entry score using up to 4 most recent HA candles."""
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        bull_weights = np.array([self.weight_bull_1, self.weight_bull_2, self.weight_bull_3, self.weight_bull_4], dtype=np.float32)
+        weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
         return float(_compute_score_numba(
-            self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
-            np.float32(self.weight_bull_doji), np.float32(self.doji_body_frac),
+            self.ha_open, self.ha_close, np.float32(atr_cur), weights,
+            np.float32(self.doji_body_frac), np.float32(self.weight_doji),
             is_entry=True
         ))
 
     def compute_exit_score(self):
-        """Compute weighted exit score using bear weights."""
+        """Compute weighted exit score using up to 4 most recent HA candles."""
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        bear_weights = np.array([self.weight_bear_1, self.weight_bear_2, self.weight_bear_3, self.weight_bear_4], dtype=np.float32)
+        weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
         return float(_compute_score_numba(
-            self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
-            np.float32(self.weight_bear_doji), np.float32(self.doji_body_frac),
+            self.ha_open, self.ha_close, np.float32(atr_cur), weights,
+            np.float32(self.doji_body_frac), np.float32(self.weight_doji),
             is_entry=False
         ))
 
@@ -276,20 +279,22 @@ class HeikinAshiWeightedStrategy(Strategy):
         price = float(self.data.Close[-1])
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 0.0)
 
-        # Entry logic - use bull weights, trigger when score >= 1.0
+        # Entry logic
         if not self.position:
             entry_score = self.compute_entry_score()
-            if entry_score >= 1.0:  # Fixed threshold for entry
+
+            if entry_score >= self.entry_threshold:
                 sl_price = max(price * 0.95, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else price * 0.97
+                # Notice the 0.95 and 0.97 are hardcoded. 
                 try:
                     self.buy(sl=sl_price)
                 except Exception:
                     self.buy()
 
-        # Exit logic - use bear weights, trigger when score >= 1.0
+        # Exit logic
         else:
             exit_score = self.compute_exit_score()
-            if exit_score >= 1.0:  # Fixed threshold for exit
+            if exit_score >= self.exit_threshold:
                 try:
                     self.position.close()
                 except Exception:
@@ -306,22 +311,22 @@ def run(path):
     """Load data, run backtest with optimization."""
     # print("Loading data...")
     df = load_csv(path)
-
+    
     # print("Computing Heikin-Ashi...")
     df = compute_heikin_ashi(df)
-
+    
     # Prepare dataframe for backtesting
     df_bt = df[['Open', 'High', 'Low', 'Close', 'Volume',
                 'HA_open', 'HA_high', 'HA_low', 'HA_close']].copy()
     df_bt.index = pd.to_datetime(df_bt.index)
-
+    
     # print("Initializing backtest...")
     bt = Backtest(df_bt, HeikinAshiWeightedStrategy,
                   cash=100000,
                   commission=0.001,
                   exclusive_orders=True,
                   finalize_trades=True) # Just to prevent extra log
-
+    
     # Set low process priority
     try:
         p = psutil.Process(os.getpid())
@@ -331,57 +336,48 @@ def run(path):
 
     #'''
     stats, heatmap = bt.optimize(
-        atr_period = 14,
-        weight_bull_1=[0.25, 0.3, 0.35],
-        weight_bull_2=[0.20, 0.25, 0.3, 0.35],
-        weight_bull_3=[0.25, 0.3, 0.35],
-        weight_bull_4=[0.3, 0.35, 0.4],
-        weight_bull_doji=[0.35, 0.4, 0.45],
-        weight_bear_1=[0.2, 0.25, 0.3],
-        weight_bear_2=[0.15, 0.2, 0.25],
-        weight_bear_3=[0.2, 0.25, 0.3],
-        weight_bear_4=[0.25, 0.3, 0.35],
-        weight_bear_doji=[0.25, 0.3, 0.35],
-        stop_atr_mult=[1.5],
+        atr_period = [10, 14, 20, 30],
+        weight_1=[0.15, 0.2, 0.25],
+        weight_2=[0.15,0.2, 0.25, 0.3],
+        weight_3=[0.2, 0.25, 0.3],
+        weight_4=[0.25, 0.3, 0.35],
+        weight_doji=[0.25, 0.3, 0.35, 0.4],
+        entry_threshold=[0.65, 0.7, 0.75, 0.8],
+        exit_threshold=[1.1, 1.2, 1.3],
+        stop_atr_mult=[1.3, 1.5, 2.0],
         maximize='Return [%]',
         return_heatmap=True
     )
     #'''
-
     '''
     stats, heatmap = bt.optimize(
-        atr_period = 14,
-        weight_bull_1=[0.3],
-        weight_bull_2=[0.25],
-        weight_bull_3=[0.3],
-        weight_bull_4=[0.35],
-        weight_bull_doji=[0.4],
-        weight_bear_1=[0.2],
-        weight_bear_2=[0.2],
-        weight_bear_3=[0.25],
-        weight_bear_4=[0.3],
-        weight_bear_doji=[0.3],
-        stop_atr_mult=[1.5],
+        weight_1=[0.2, 0.25],
+        weight_2=0.25,
+        weight_3=0.35,
+        weight_4=0.35,
+        weight_doji=0.25,
+        entry_threshold=[0.7, 0.9],
+        exit_threshold=[1.0, 1.2],
+        stop_atr_mult=[2.0, 3.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
     '''
 
+    
     print("--- Optimization Complete ---\n")
     print(stats)
-
+    
     print("\n--- Best Parameters ---")
     st = stats._strategy
-    print(f"  weight_bull_1: {st.weight_bull_1} | weight_bull_2: {st.weight_bull_2}")
-    print(f"  weight_bull_3: {st.weight_bull_3} | weight_bull_4: {st.weight_bull_4}")
-    print(f"  weight_bull_doji: {st.weight_bull_doji}")
-    print(f"  weight_bear_1: {st.weight_bear_1} | weight_bear_2: {st.weight_bear_2}")
-    print(f"  weight_bear_3: {st.weight_bear_3} | weight_bear_4: {st.weight_bear_4}")
-    print(f"  weight_bear_doji: {st.weight_bear_doji}")
+    print(f"  weight_1: {st.weight_1} | weight_2: {st.weight_2}")
+    print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
+    print(f"  weight_doji: {st.weight_doji}")
+    print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
-
-    plot_filename = f"HeikinAshi_weighted_{date.today()}.html"
-    heatmap_filename = f"HeikinAshi_weighted_heatmap_{date.today()}.html"
+    
+    plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
+    heatmap_filename = f"HeikinAshi_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
@@ -395,7 +391,7 @@ def run(path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python HeikinAshi_weighted.py {data}.csv")
+        print("Usage: python HeikinAshi_Combined.py {data}.csv")
         sys.exit(1)
     else:
         run(sys.argv[1])

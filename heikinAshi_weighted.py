@@ -348,25 +348,6 @@ def run(path):
     )
     #'''
 
-    '''
-    stats, heatmap = bt.optimize(
-        atr_period = 14,
-        weight_bull_1=[0.3],
-        weight_bull_2=[0.25],
-        weight_bull_3=[0.3],
-        weight_bull_4=[0.35],
-        weight_bull_doji=[0.4],
-        weight_bear_1=[0.2],
-        weight_bear_2=[0.2],
-        weight_bear_3=[0.25],
-        weight_bear_4=[0.3],
-        weight_bear_doji=[0.3],
-        stop_atr_mult=[1.5],
-        maximize='Return [%]',
-        return_heatmap=True
-    )
-    '''
-
     print("--- Optimization Complete ---\n")
     print(stats)
 

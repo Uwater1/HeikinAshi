@@ -3,64 +3,51 @@
 Start                     2015-11-16 00:00:00
 End                       2025-11-14 00:00:00
 Duration                   3651 days 00:00:00
-Exposure Time [%]                    73.87674
-Equity Final [$]                 206633.85529
-Equity Peak [$]                  213641.57359
-Commissions [$]                    10247.6483
-Return [%]                          106.63386
+Exposure Time [%]                     66.6004
+Equity Final [$]                 191430.31076
+Equity Peak [$]                  197916.41896
+Commissions [$]                   11928.59545
+Return [%]                           91.43031
 Buy & Hold Return [%]               226.52065
-Return (Ann.) [%]                     7.54316
-Volatility (Ann.) [%]                12.10874
-CAGR [%]                              5.13708
-Sharpe Ratio                          0.62295
-Sortino Ratio                         0.92991
-Calmar Ratio                          0.33052
-Alpha [%]                             21.2801
-Beta                                   0.3768
-Max. Drawdown [%]                   -22.82184
-Avg. Drawdown [%]                     -1.5703
-Max. Drawdown Duration      914 days 00:00:00
-Avg. Drawdown Duration       34 days 00:00:00
-# Trades                                   35
-Win Rate [%]                         57.14286
+Return (Ann.) [%]                     6.72278
+Volatility (Ann.) [%]                11.01581
+CAGR [%]                              4.58394
+Sharpe Ratio                          0.61028
+Sortino Ratio                         0.90217
+Calmar Ratio                          0.46739
+Alpha [%]                            20.11517
+Beta                                  0.31483
+Max. Drawdown [%]                   -14.38353
+Avg. Drawdown [%]                    -1.62317
+Max. Drawdown Duration      802 days 00:00:00
+Avg. Drawdown Duration       39 days 00:00:00
+# Trades                                   41
+Win Rate [%]                         53.65854
 Best Trade [%]                       14.49877
-Worst Trade [%]                      -7.74989
-Avg. Trade [%]                        2.09984
-Max. Trade Duration         184 days 00:00:00
-Avg. Trade Duration          76 days 00:00:00
-Profit Factor                         2.64804
-Expectancy [%]                        2.25864
-SQN                                   2.07405
-Kelly Criterion                       0.33983
+Worst Trade [%]                      -4.07454
+Avg. Trade [%]                        1.59959
+Max. Trade Duration         174 days 00:00:00
+Avg. Trade Duration          58 days 00:00:00
+Profit Factor                         2.66371
+Expectancy [%]                         1.6949
+SQN                                   2.21938
+Kelly Criterion                       0.31928
 _strategy                 HeikinAshiWeight...
 _equity_curve                             ...
 _trades                       Size  EntryB...
 dtype: object
 
 --- Best Parameters ---
-  weight_1: 0.2 | weight_2: 0.25
-  weight_3: 0.35 | weight_4: 0.35
-  weight_doji: 0.25
-  entry_threshold: 0.9 | exit_threshold: 1.2
-  stop_atr_mult: 3.0
-Plot saved as: HeikinAshi_optimized_2025-12-02.html  ||  Heatmap saved as: HeikinAshi_heatmap_2025-12-02.html
+  weight_bull_1: 0.3 | weight_bull_2: 0.25
+  weight_bull_3: 0.3 | weight_bull_4: 0.35
+  weight_bull_doji: 0.4
+  weight_bear_1: 0.2 | weight_bear_2: 0.2
+  weight_bear_3: 0.25 | weight_bear_4: 0.3
+  weight_bear_doji: 0.3
+  stop_atr_mult: 1.5
+Plot saved as: HeikinAshi_weighted_2025-12-02.html  ||  Heatmap saved as: HeikinAshi_weighted_heatmap_2025-12-02.html
 
 --- Top 150 parameter sets (by Return [%]): (.csv) ---
-weight_1,weight_2,weight_3,weight_4,weight_doji,entry_threshold,exit_threshold,stop_atr_mult,Return [%]
-0.20,0.25,0.35,0.35,0.25,0.90,1.20,3.00,106.63
-0.25,0.25,0.35,0.35,0.25,0.90,1.20,2.00,105.50
-0.20,0.25,0.35,0.35,0.25,0.70,1.20,2.00,103.90
-0.20,0.25,0.35,0.35,0.25,0.70,1.20,3.00,103.52
-0.20,0.25,0.35,0.35,0.25,0.90,1.20,2.00,102.90
-0.25,0.25,0.35,0.35,0.25,0.90,1.20,3.00,101.80
-0.25,0.25,0.35,0.35,0.25,0.70,1.20,2.00,97.83
-0.25,0.25,0.35,0.35,0.25,0.70,1.20,3.00,89.30
-0.25,0.25,0.35,0.35,0.25,0.70,1.00,2.00,84.39
-0.20,0.25,0.35,0.35,0.25,0.70,1.00,2.00,80.88
-0.25,0.25,0.35,0.35,0.25,0.90,1.00,3.00,79.76
-0.25,0.25,0.35,0.35,0.25,0.70,1.00,3.00,79.28
-0.20,0.25,0.35,0.35,0.25,0.70,1.00,3.00,78.43
-0.25,0.25,0.35,0.35,0.25,0.90,1.00,2.00,76.14
-0.20,0.25,0.35,0.35,0.25,0.90,1.00,3.00,69.02
-0.20,0.25,0.35,0.35,0.25,0.90,1.00,2.00,62.28
+atr_period,weight_bull_1,weight_bull_2,weight_bull_3,weight_bull_4,weight_bull_doji,weight_bear_1,weight_bear_2,weight_bear_3,weight_bear_4,weight_bear_doji,stop_atr_mult,Return [%]
+14,0.30,0.25,0.30,0.35,0.40,0.20,0.20,0.25,0.30,0.30,1.50,90.14
 
