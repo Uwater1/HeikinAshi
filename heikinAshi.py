@@ -360,7 +360,7 @@ def run(path):
         weight_volume= [0, 0.05, 0.1, 0.15],
         entry_threshold=[0.65, 0.7, 0.75, 0.8],
         exit_threshold=[1.1, 1.2, 1.3],
-        stop_atr_mult=[1.0, 1.5, 2.0],        
+        stop_atr_mult=[1.3, 1.5, 2.0],        
         maximize='Return [%]',
         return_heatmap=True
     )
