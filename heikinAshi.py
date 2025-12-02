@@ -93,15 +93,15 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, we
         if is_entry:
             if body > 0:  # green candle
                 norm_body = body / atr_cur
-                if norm_body > 3.0:
-                    norm_body = 3.0
+                if norm_body < 0.3:
+                    norm_body = 0.3
                 score += weights[i] * norm_body
         else:
             body = ha_o - ha_c  # positive if red
             if body > 0:
                 norm_body = body / atr_cur
-                if norm_body > 3.0:
-                    norm_body = 3.0
+                if norm_body < 0.3:
+                    norm_body = 0.3
                 score += weights[i] * norm_body
 
     # Doji bonus: check bar -6
@@ -284,8 +284,8 @@ class HeikinAshiWeightedStrategy(Strategy):
             entry_score = self.compute_entry_score()
 
             if entry_score >= self.entry_threshold:
-                sl_price = max(0.0, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else max(0.0, price * 0.98)
-                
+                sl_price = max(price * 0.95, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else price * 0.97
+                # Notice the 0.95 and 0.97 are hardcoded. 
                 try:
                     self.buy(sl=sl_price)
                 except Exception:
