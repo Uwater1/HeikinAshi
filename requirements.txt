@@ -4,3 +4,4 @@ pandas-ta
 psutil
 numba
 backtesting
+sambo

@@ -332,15 +332,15 @@ def run(path):
     #'''
     stats, heatmap = bt.optimize(
         atr_period = 14,
-        weight_bull_1=[0.25, 0.3, 0.35],
-        weight_bull_2=[0.20, 0.25, 0.3, 0.35],
-        weight_bull_3=[0.25, 0.3, 0.35],
-        weight_bull_4=[0.3, 0.35, 0.4],
-        weight_bull_doji=[0.35, 0.4, 0.45],
-        weight_bear_1=[0.2, 0.25, 0.3],
-        weight_bear_2=[0.15, 0.2, 0.25],
-        weight_bear_3=[0.2, 0.25, 0.3],
-        weight_bear_4=[0.25, 0.3, 0.35],
+        weight_bull_1=[0.25, 0.3, 0.35, 0.4],
+        weight_bull_2=[0.20, 0.25, 0.3],
+        weight_bull_3=[0.25, 0.3, 0.35, 0.4],
+        weight_bull_4=[0.35, 0.4, 0.45],
+        weight_bull_doji=[0.30, 0.35, 0.4, 0.45],
+        weight_bear_1=[0.15, 0.2, 0.25],
+        weight_bear_2=[0.1, 0.15, 0.2],
+        weight_bear_3=[0.15, 0.2, 0.25],
+        weight_bear_4=[0.15, 0.2, 0.25, 0.30],
         weight_bear_doji=[0.25, 0.3, 0.35],
         stop_atr_mult=[1.5],
         maximize='Return [%]',
@@ -372,6 +372,7 @@ def run(path):
 
     print("\n--- Best Parameters ---")
     st = stats._strategy
+    print(f"  atr_period: {st.atr_period}")
     print(f"  weight_bull_1: {st.weight_bull_1} | weight_bull_2: {st.weight_bull_2}")
     print(f"  weight_bull_3: {st.weight_bull_3} | weight_bull_4: {st.weight_bull_4}")
     print(f"  weight_bull_doji: {st.weight_bull_doji}")

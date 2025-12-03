@@ -74,31 +74,36 @@ def _compute_heikin_ashi_numba(o, h, l, c):
 
 
 @jit(nopython=True, cache=True)
-def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vol, vol_ma_period, weight_doji, weight_volume, is_entry=True):
-    """Numba-optimized score calculation for entry/exit."""
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, weight_doji, is_entry=True):
+    """Numba-optimized score calculation for entry/exit.
+    # Calculates weighted trading score based on:
+    # - Recent 4 HA candles (body size normalized by ATR, weighted by recency)
+    # - Doji patterns at position -6 (bonus for bullish/bearish confirmation)
+    # Returns composite score used for entry/exit decisions when exceeding thresholds
+    """
     score = 0.0
     lookback = 4
-    
+
     for i in range(lookback):
         idx = -(i + 1)
         ha_o = ha_open[idx]
         ha_c = ha_close[idx]
         body = ha_c - ha_o
-        
+
         if is_entry:
             if body > 0:  # green candle
                 norm_body = body / atr_cur
-                if norm_body > 3.0:
-                    norm_body = 3.0
+                if norm_body < 0.3:
+                    norm_body = 0.3
                 score += weights[i] * norm_body
         else:
             body = ha_o - ha_c  # positive if red
             if body > 0:
                 norm_body = body / atr_cur
-                if norm_body > 3.0:
-                    norm_body = 3.0
+                if norm_body < 0.3:
+                    norm_body = 0.3
                 score += weights[i] * norm_body
-    
+
     # Doji bonus: check bar -6
     try:
         prior_idx = -6
@@ -112,39 +117,7 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vo
                     score += weight_doji
     except:
         pass
-    
-    # Volume bonus
-    try:
-        vol_cur = vol[-1]
-        if len(vol) >= vol_ma_period + 1:
-            vol_ma = 0.0
-            cnt = 0
-            for v in vol[-(vol_ma_period + 1):-1]:
-                if not np.isnan(v):
-                    vol_ma += v
-                    cnt += 1
-            if cnt > 0:
-                vol_ma /= cnt
-        else:
-            vol_ma = 0.0
-            cnt = 0
-            for v in vol:
-                if not np.isnan(v):
-                    vol_ma += v
-                    cnt += 1
-            if cnt > 0:
-                vol_ma /= cnt
-        
-        if vol_ma > 0 and vol_cur > 1.2 * vol_ma:
-            if is_entry:
-                score += weight_volume
-            else:
-                # Exit volume bonus only on red bars
-                if ha_close[-1] < ha_open[-1]:
-                    score += weight_volume
-    except:
-        pass
-    
+
     return score
 
 # ========================================
@@ -153,9 +126,28 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_body_frac, vo
 
 def load_csv(path):
     """Load CSV data and prepare for backtesting."""
-    df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
-    df = df.rename(columns={"Close/Last": "Close"})
-    
+    # Try to detect the CSV format by checking column names
+    try:
+        # First try reading with Date column (IVV.csv format)
+        df = pd.read_csv(path, nrows=5)  # Read just header to detect format
+        if "Date" in df.columns:
+            # IVV.csv format
+            df = pd.read_csv(path, parse_dates=["Date"], index_col="Date")
+            df = df.rename(columns={"Close/Last": "Close"})
+        elif "time" in df.columns:
+            # IVV2.csv format
+            df = pd.read_csv(path, parse_dates=["time"], index_col="time")
+            df = df.rename(columns={
+                "open": "Open",
+                "high": "High",
+                "low": "Low",
+                "close": "Close"
+            })
+        else:
+            raise ValueError("Unknown CSV format - neither 'Date' nor 'time' column found")
+    except Exception as e:
+        raise ValueError(f"Failed to load CSV: {e}")
+
     numeric_cols = ["Open", "High", "Low", "Close", "Volume"]
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
     df = df.sort_index()
@@ -194,7 +186,18 @@ def compute_heikin_ashi(df):
             df['Close'].to_numpy()
         )
         df['HA_open'] = ha_open
-        df['HA_high'] = ha_high
+        df['HA_high'] = ha_highstats, heatmap, optimize_result = backtest.optimize(
+    n1=[10, 100],      # Note: For method="sambo", we
+    n2=[20, 200],      # only need interval end-points
+    n_enter=[10, 40],
+    n_exit=[10, 30],
+    constraint=lambda p: p.n_exit < p.n_enter < p.n1 < p.n2,
+    maximize='Equity Final [$]',
+    method='sambo',
+    max_tries=40,
+    random_state=0,
+    return_heatmap=True,
+    return_optimization=True)
         df['HA_low'] = ha_low
         df['HA_close'] = ha_close
     return df
@@ -216,8 +219,7 @@ class HeikinAshiWeightedStrategy(Strategy):
     weight_4 = 0.30
 
     # Bonuses
-    weight_doji = 0.20
-    weight_volume = 0.20
+    weight_doji = 0.30
 
     # Thresholds
     entry_threshold = 1.0
@@ -228,9 +230,6 @@ class HeikinAshiWeightedStrategy(Strategy):
 
     # Doji threshold (fraction of ATR)
     doji_body_frac = 0.20
-
-    # Volume lookback for MA
-    vol_ma_period = 20
 
     def init(self):
         # Register ATR indicator
@@ -247,8 +246,6 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.ha_high = self.I(lambda: np.asarray(self.data.HA_high, dtype=np.float32))
         self.ha_low = self.I(lambda: np.asarray(self.data.HA_low, dtype=np.float32))
 
-        # Volume array accessor
-        self.vol = self.I(lambda: np.asarray(self.data.Volume, dtype=np.float32))
 
     def _is_green(self, idx):
         """Check if candle at idx is green."""
@@ -271,8 +268,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), weights,
-            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
-            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            np.float32(self.doji_body_frac), np.float32(self.weight_doji),
             is_entry=True
         ))
 
@@ -285,8 +281,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         weights = np.array([self.weight_1, self.weight_2, self.weight_3, self.weight_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), weights,
-            np.float32(self.doji_body_frac), self.vol, self.vol_ma_period,
-            np.float32(self.weight_doji), np.float32(self.weight_volume),
+            np.float32(self.doji_body_frac), np.float32(self.weight_doji),
             is_entry=False
         ))
 
@@ -300,8 +295,8 @@ class HeikinAshiWeightedStrategy(Strategy):
             entry_score = self.compute_entry_score()
 
             if entry_score >= self.entry_threshold:
-                sl_price = max(0.0, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else max(0.0, price * 0.98)
-                
+                sl_price = max(price * 0.95, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else price * 0.97
+                # Notice the 0.95 and 0.97 are hardcoded. 
                 try:
                     self.buy(sl=sl_price)
                 except Exception:
@@ -320,15 +315,52 @@ class HeikinAshiWeightedStrategy(Strategy):
                         pass
 
 # ========================================
+# SAMBO Optimization Analysis
+# ========================================
+
+def analyze_sambo_results(optimize_result):
+    """Analyze and display SAMBO optimization results."""
+    if not optimize_result or 'history' not in optimize_result:
+        print("No SAMBO optimization results available.")
+        return
+
+    print("\n=== SAMBO Optimization Analysis ===")
+
+    # Extract optimization history
+    history = optimize_result.get('history', [])
+
+    if history:
+        # Convert history to DataFrame for analysis
+        import pandas as pd
+        history_df = pd.DataFrame(history)
+
+        print(f"Total evaluations: {len(history_df)}")
+        print(f"Best result found: {history_df.iloc[-1]['Return [%]']:.2f}%")
+
+        # Show parameter evolution
+        print("\nParameter evolution:")
+        for param in ['atr_period', 'weight_1', 'weight_2', 'weight_3', 'weight_4',
+                     'weight_doji', 'entry_threshold', 'exit_threshold', 'stop_atr_mult']:
+            if param in history_df.columns:
+                print(f"  {param}: {history_df[param].iloc[0]:.3f} -> {history_df[param].iloc[-1]:.3f}")
+
+    # Display optimization statistics if available
+    if 'stats' in optimize_result:
+        stats = optimize_result['stats']
+        print(f"\nOptimization Statistics:")
+        print(f"  Time taken: {stats.get('time_elapsed', 'N/A')} seconds")
+        print(f"  Evaluations per second: {stats.get('evals_per_sec', 'N/A'):.1f}")
+
+# ========================================
 # Main Backtest Runner
 # ========================================
 
 def run(path):
     """Load data, run backtest with optimization."""
-    print("Loading data...")
+    # print("Loading data...")
     df = load_csv(path)
     
-    print("Computing Heikin-Ashi...")
+    # print("Computing Heikin-Ashi...")
     df = compute_heikin_ashi(df)
     
     # Prepare dataframe for backtesting
@@ -336,7 +368,7 @@ def run(path):
                 'HA_open', 'HA_high', 'HA_low', 'HA_close']].copy()
     df_bt.index = pd.to_datetime(df_bt.index)
     
-    print("Initializing backtest...")
+    # print("Initializing backtest...")
     bt = Backtest(df_bt, HeikinAshiWeightedStrategy,
                   cash=100000,
                   commission=0.001,
@@ -346,37 +378,35 @@ def run(path):
     # Set low process priority
     try:
         p = psutil.Process(os.getpid())
-        p.nice(10)
-        print("✓ Process priority set to low\n")
+        p.nice(0)
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
-    
-    print("--- Starting Optimization ---")
-    print("This may take 10-20 minutes depending on your system...\n")
 
-    #'''
-    stats, heatmap = bt.optimize(
-        weight_1=[0.2, 0.25, 0.25, 0.3],
-        weight_2=[0.2, 0.25, 0.3],
-        weight_3=[0.15, 0.2, 0.25],
-        weight_4=[0.2, 0.25, 0.3],
-        weight_doji=[0.1, 0.2, 0.3],
-        weight_volume= [0.05, 0.1, 0.15],
-        entry_threshold=[0.7, 0.8, 0.9, 1.0],
-        exit_threshold=[1.0, 1.1, 1.2],
-        stop_atr_mult=[2.0, 2.5, 3.0, 3.5, 4.0],        
+    # Use SAMBO optimization method
+    stats, heatmap, optimize_result = bt.optimize(
+        atr_period=(8, 20),        # SAMBO uses ranges instead of discrete values
+        weight_1=(0.10, 0.30),
+        weight_2=(0.10, 0.35),
+        weight_3=(0.15, 0.35),
+        weight_4=(0.20, 0.40),
+        weight_doji=(0.20, 0.45),
+        entry_threshold=(0.60, 0.9),
+        exit_threshold=(1.1, 1.4),
+        stop_atr_mult=(1.2, 2.0),
         maximize='Return [%]',
-        return_heatmap=True
+        method='sambo',
+        max_tries=1000,              # Number of evaluations
+        random_state=42,           # For reproducibility
+        return_heatmap=True,
+        return_optimization=True
     )
-    #'''
     '''
     stats, heatmap = bt.optimize(
         weight_1=[0.2, 0.25],
         weight_2=0.25,
-        weight_3=0.25,
-        weight_4=0.25,
+        weight_3=0.35,
+        weight_4=0.35,
         weight_doji=0.25,
-        weight_volume= 0.1,
         entry_threshold=[0.7, 0.9],
         exit_threshold=[1.0, 1.2],
         stop_atr_mult=[2.0, 3.0],        
@@ -386,28 +416,31 @@ def run(path):
     '''
 
     
-    print("\n--- Optimization Complete ---\n")
+    print("=== SAMBO Optimization Complete ===\n")
     print(stats)
-    
-    print("\n--- Best Parameters ---")
+
+    print("\n--- Best Parameters (SAMBO) ---")
     st = stats._strategy
-    print(f"  weight_1: {st.weight_1}")
-    print(f"  weight_2: {st.weight_2}")
-    print(f"  weight_3: {st.weight_3}")
-    print(f"  weight_4: {st.weight_4}")
+    print(f"  atr_period: {st.atr_period}")
+    print(f"  weight_1: {st.weight_1} | weight_2: {st.weight_2}")
+    print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
     print(f"  weight_doji: {st.weight_doji}")
-    print(f"  weight_volume: {st.weight_volume}")
-    print(f"  entry_threshold: {st.entry_threshold}")
-    print(f"  exit_threshold: {st.exit_threshold}")
+    print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
-    
-    print("\nPlotting results...")
-    plot_filename = f"HeikinAshi_optimized_{date.today()}.html"
-    heatmap_filename = f"HeikinAshi_heatmap_{date.today()}.html"
+
+    # Save SAMBO results
+    plot_filename = f"HeikinAshi_SAMBO_optimized_{date.today()}.html"
+    heatmap_filename = f"HeikinAshi_SAMBO_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
-    print(f"Plot saved as: {plot_filename}")
-    print(f"Heatmap saved as: {heatmap_filename}")
+    print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
+
+    # Analyze SAMBO optimization results
+    analyze_sambo_results(optimize_result)
+
+    print("\n--- Top 10 parameter sets (by Return [%]): (.csv) ---")
+    top_df = heatmap.sort_values(ascending=False).iloc[:10].reset_index()
+    print(top_df.to_csv(index=False,float_format='%.4f'))
 
 # ========================================
 # CLI Entry Point
