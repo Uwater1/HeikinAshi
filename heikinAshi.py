@@ -72,37 +72,89 @@ def _compute_heikin_ashi_numba(o, h, l, c):
     return ha_open, ha_high, ha_low, ha_close
 
 @jit(nopython=True, cache=True)
-def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_body_frac, is_entry=True):
-    """Numba-optimized score calculation with separate bull/bear weights.
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_body_frac,
+                        weight_bull_bonus=0.1, weight_bear_bonus=0.1,
+                        weight_bull_penalty=0.05, weight_bear_penalty=0.05, is_entry=True):
+    """Numba-optimized score calculation with momentum tracking for bars 3 and 4.
     Calculates weighted trading score based on:
     - Recent 4 HA candles (body size normalized by ATR, weighted by recency)
     - Doji patterns at position -6 (bonus for bullish/bearish confirmation)
+    - Momentum tracking: bonus/penalty for bars 3 and 4 based on size comparison
     Returns composite score used for entry/exit decisions when exceeding thresholds
     """
     score = 0.0
     lookback = 4
 
+    # Pre-allocate arrays
+    bar_sizes = np.empty(lookback, dtype=np.float32)
+    signed_norms = np.empty(lookback, dtype=np.float32)
+
+    # Find selected bars: skip reds before first desired, then include all remaining
+    selected = []
+    started = False
     for i in range(lookback):
+        idx = -(i + 1)
+        is_desired = (is_entry and ha_close[idx] > ha_open[idx]) or (not is_entry and ha_close[idx] < ha_open[idx])
+        if is_desired:
+            started = True
+            selected.append(i)
+        elif not started:
+            continue  # skip initial non-desired
+        else:
+            selected.append(i)  # include non-desired after starting
+
+    # Compute signed norms and bar sizes only for selected bars
+    for i in selected:
         idx = -(i + 1)
         ha_o = ha_open[idx]
         ha_c = ha_close[idx]
-        body = ha_c - ha_o
-
         if is_entry:
-            if body > 0:  # green candle
-                norm_body = body / atr_cur
-                if norm_body < 0.3:
-                    norm_body = 0.3
-                score += weights[i] * norm_body
+            body = ha_c - ha_o  # positive for green, negative for red
         else:
-            body = ha_o - ha_c  # positive if red
-            if body > 0:
-                norm_body = body / atr_cur
-                if norm_body < 0.3:
-                    norm_body = 0.3
-                score += weights[i] * norm_body
+            body = ha_o - ha_c  # positive for red, negative for green
+        signed_norm = body / atr_cur
+        signed_norms[i] = signed_norm
+        bar_sizes[i] = abs(signed_norm)
 
-    # Doji bonus: check bar -6
+    # Score only for selected bars
+    for j, i in enumerate(selected):
+        score += weights[j] * signed_norms[i]
+
+    # Momentum tracking for the 3rd and 4th selected bars
+    if len(selected) >= 3:
+        # For 3rd selected bar
+        current_idx = selected[2]
+        prev_indices = selected[0:2]
+        max_prev_size = max(bar_sizes[prev_indices[0]], bar_sizes[prev_indices[1]])
+        min_prev_size = min(bar_sizes[prev_indices[0]], bar_sizes[prev_indices[1]])
+        current_size = bar_sizes[current_idx]
+
+        bonus_weight = weight_bull_bonus if is_entry else weight_bear_bonus
+        penalty_weight = weight_bull_penalty if is_entry else weight_bear_penalty
+
+        if current_size > max_prev_size:
+            bonus = (current_size - max_prev_size) * bonus_weight
+            score += bonus
+        elif current_size < min_prev_size:
+            penalty = (min_prev_size - current_size) * penalty_weight
+            score -= penalty
+
+    if len(selected) >= 4:
+        # For 4th selected bar
+        current_idx = selected[3]
+        prev_indices = selected[0:3]
+        max_prev_size = max(bar_sizes[prev_indices[0]], bar_sizes[prev_indices[1]], bar_sizes[prev_indices[2]])
+        min_prev_size = min(bar_sizes[prev_indices[0]], bar_sizes[prev_indices[1]], bar_sizes[prev_indices[2]])
+        current_size = bar_sizes[current_idx]
+
+        if current_size > max_prev_size:
+            bonus = (current_size - max_prev_size) * bonus_weight
+            score += bonus
+        elif current_size < min_prev_size:
+            penalty = (min_prev_size - current_size) * penalty_weight
+            score -= penalty
+
+    # Doji bonus logic (unchanged for performance)
     try:
         prior_idx = -6
         prior_body = abs(ha_close[prior_idx] - ha_open[prior_idx])
@@ -218,6 +270,12 @@ class HeikinAshiWeightedStrategy(Strategy):
     # Doji threshold (fraction of ATR)
     doji_body_frac = 0.20
 
+    # Momentum tracking parameters
+    weight_bull_bonus = 0.1    # Bonus weight for accelerating bullish momentum
+    weight_bear_bonus = 0.1     # Bonus weight for accelerating bearish momentum
+    weight_bull_penalty = 0.05 # Penalty weight for decelerating bullish momentum
+    weight_bear_penalty = 0.05 # Penalty weight for decelerating bearish momentum
+
     def init(self):
         # Register ATR indicator
         self.atr = self.I(lambda: indicator_atr(
@@ -255,6 +313,8 @@ class HeikinAshiWeightedStrategy(Strategy):
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
             np.float32(self.weight_bull_doji), np.float32(self.doji_body_frac),
+            np.float32(self.weight_bull_bonus), np.float32(self.weight_bear_bonus),
+            np.float32(self.weight_bull_penalty), np.float32(self.weight_bear_penalty),
             is_entry=True
         ))
 
@@ -268,6 +328,8 @@ class HeikinAshiWeightedStrategy(Strategy):
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
             np.float32(self.weight_bear_doji), np.float32(self.doji_body_frac),
+            np.float32(self.weight_bull_bonus), np.float32(self.weight_bear_bonus),
+            np.float32(self.weight_bull_penalty), np.float32(self.weight_bear_penalty),
             is_entry=False
         ))
 
@@ -332,16 +394,20 @@ def run(path):
     #'''
     stats, heatmap = bt.optimize(
         atr_period = 14,
-        weight_bull_1=[0.25, 0.3, 0.35, 0.4],
-        weight_bull_2=[0.20, 0.25, 0.3],
-        weight_bull_3=[0.25, 0.3, 0.35, 0.4],
-        weight_bull_4=[0.35, 0.4, 0.45],
-        weight_bull_doji=[0.30, 0.35, 0.4, 0.45],
+        weight_bull_1=[0.25, 0.3, 0.35],
+        weight_bull_2=[0.15, 0.20, 0.25],
+        weight_bull_3=[0.3, 0.35, 0.4],
+        weight_bull_4=[0.4, 0.45, 0.5],
+        weight_bull_doji=[0.35, 0.4, 0.45],
         weight_bear_1=[0.15, 0.2, 0.25],
         weight_bear_2=[0.1, 0.15, 0.2],
-        weight_bear_3=[0.15, 0.2, 0.25],
-        weight_bear_4=[0.15, 0.2, 0.25, 0.30],
-        weight_bear_doji=[0.25, 0.3, 0.35],
+        weight_bear_3=[0.15, 0.2],
+        weight_bear_4=[0.15, 0.2, 0.25],
+        weight_bear_doji=[0.3, 0.35],
+        weight_bull_bonus=[0.05, 0.1, 0.15],
+        weight_bear_bonus=[0.05, 0.1, 0.15],
+        weight_bull_penalty=[0.0, 0.05, 0.1],
+        weight_bear_penalty=[0.0, 0.05, 0.1],
         stop_atr_mult=[1.5],
         maximize='Return [%]',
         return_heatmap=True
@@ -361,6 +427,10 @@ def run(path):
         weight_bear_3=[0.25],
         weight_bear_4=[0.3],
         weight_bear_doji=[0.3],
+        weight_bull_bonus=[0.1],
+        weight_bear_bonus=[0.1],
+        weight_bull_penalty=[0.05],
+        weight_bear_penalty=[0.05],
         stop_atr_mult=[1.5],
         maximize='Return [%]',
         return_heatmap=True
@@ -376,6 +446,8 @@ def run(path):
     print(f"  weight_bull_1: {st.weight_bull_1} | weight_bull_2: {st.weight_bull_2}")
     print(f"  weight_bull_3: {st.weight_bull_3} | weight_bull_4: {st.weight_bull_4}")
     print(f"  weight_bull_doji: {st.weight_bull_doji}")
+    print(f"  weight_bull_bonus: {st.weight_bull_bonus} | weight_bear_bonus: {st.weight_bear_bonus}")
+    print(f"  weight_bull_penalty: {st.weight_bull_penalty} | weight_bear_penalty: {st.weight_bear_penalty}")
     print(f"  weight_bear_1: {st.weight_bear_1} | weight_bear_2: {st.weight_bear_2}")
     print(f"  weight_bear_3: {st.weight_bear_3} | weight_bear_4: {st.weight_bear_4}")
     print(f"  weight_bear_doji: {st.weight_bear_doji}")
