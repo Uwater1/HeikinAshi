@@ -56,7 +56,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
             # Install most dependencies first
-            pip install numpy pandas pandas-ta psutil numba backtesting
+            pip install -r requirements.txt
             # Try to install sambo with error handling
             pip install sambo || echo "Warning: sambo installation failed, will use fallback optimization method"
           else
