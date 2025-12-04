@@ -9,6 +9,7 @@ import sys
 import os
 import psutil
 import logging
+import sambo
 import multiprocessing as mp
 from datetime import date
 from numba import jit
@@ -446,30 +447,61 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    stats, heatmap, optimize_result = bt.optimize(
-        atr_period=(10, 20),
-        weight_bull_1=(25, 35),  # 0.25 to 0.35
-        weight_bull_2=(15, 30),  # 0.15 to 0.25
-        weight_bull_3=(30, 40),  # 0.30 to 0.40
-        weight_bull_4=(35, 50),  # 0.40 to 0.50
-        weight_bull_doji=(30, 45),  # 0.35 to 0.45
-        weight_bear_1=(10, 25),  # 0.15 to 0.25
-        weight_bear_2=(10, 25),  # 0.10 to 0.20
-        weight_bear_3=(10, 25),  # 0.15 to 0.20
-        weight_bear_4=(10, 25),  # 0.15 to 0.25
-        weight_bear_doji=(25, 40),  # 0.30 to 0.35
-        weight_bull_bonus=(0, 15),  # 0.05 to 0.15
-        weight_bear_bonus=(0, 15),  # 0.05 to 0.15
-        weight_bull_penalty=(0, 15),  # 0.00 to 0.10
-        weight_bear_penalty=(0, 15),  # 0.00 to 0.10
-        stop_atr_mult=150,
-        maximize='Return [%]',
-        method="sambo",
-        max_tries=100000,
-        random_state=42,
-        return_heatmap=True,
-        return_optimization=True
-    )
+    # Try to use sambo optimization method, fall back to random if sambo is not available
+    try:
+        stats, heatmap, optimize_result = bt.optimize(
+            atr_period=(10, 20),
+            weight_bull_1=(25, 35),  # 0.25 to 0.35
+            weight_bull_2=(15, 30),  # 0.15 to 0.25
+            weight_bull_3=(30, 40),  # 0.30 to 0.40
+            weight_bull_4=(35, 50),  # 0.40 to 0.50
+            weight_bull_doji=(30, 45),  # 0.35 to 0.45
+            weight_bear_1=(10, 25),  # 0.15 to 0.25
+            weight_bear_2=(10, 25),  # 0.10 to 0.20
+            weight_bear_3=(10, 25),  # 0.15 to 0.20
+            weight_bear_4=(10, 25),  # 0.15 to 0.25
+            weight_bear_doji=(25, 40),  # 0.30 to 0.35
+            weight_bull_bonus=(0, 15),  # 0.05 to 0.15
+            weight_bear_bonus=(0, 15),  # 0.05 to 0.15
+            weight_bull_penalty=(0, 15),  # 0.00 to 0.10
+            weight_bear_penalty=(0, 15),  # 0.00 to 0.10
+            stop_atr_mult=150,
+            maximize='Return [%]',
+            method="sambo",
+            max_tries=1000,
+            random_state=42,
+            return_heatmap=True,
+            return_optimization=True
+        )
+    except ImportError as e:
+        if "sambo" in str(e):
+            print("Warning: sambo package not available, falling back to random optimization method")
+            stats, heatmap, optimize_result = bt.optimize(
+                atr_period=(10, 20),
+                weight_bull_1=(25, 35),  # 0.25 to 0.35
+                weight_bull_2=(15, 30),  # 0.15 to 0.25
+                weight_bull_3=(30, 40),  # 0.30 to 0.40
+                weight_bull_4=(35, 50),  # 0.40 to 0.50
+                weight_bull_doji=(30, 45),  # 0.35 to 0.45
+                weight_bear_1=(10, 25),  # 0.15 to 0.25
+                weight_bear_2=(10, 25),  # 0.10 to 0.20
+                weight_bear_3=(10, 25),  # 0.15 to 0.20
+                weight_bear_4=(10, 25),  # 0.15 to 0.25
+                weight_bear_doji=(25, 40),  # 0.30 to 0.35
+                weight_bull_bonus=(0, 15),  # 0.05 to 0.15
+                weight_bear_bonus=(0, 15),  # 0.05 to 0.15
+                weight_bull_penalty=(0, 15),  # 0.00 to 0.10
+                weight_bear_penalty=(0, 15),  # 0.00 to 0.10
+                stop_atr_mult=150,
+                maximize='Return [%]',
+                method="random",
+                max_tries=1000,
+                random_state=42,
+                return_heatmap=True,
+                return_optimization=True
+            )
+        else:
+            raise e
 
     '''
     stats, heatmap = bt.optimize(
