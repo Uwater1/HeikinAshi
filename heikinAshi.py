@@ -75,7 +75,8 @@ def _compute_heikin_ashi_numba(o, h, l, c):
 @jit(nopython=True, cache=True)
 def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_threshold,
                         context_quality, weight_bull_bonus=0.1, weight_bear_bonus=0.1,
-                        weight_bull_penalty=0.05, weight_bear_penalty=0.05, is_entry=True):
+                        weight_bull_penalty=0.05, weight_bear_penalty=0.05, is_entry=True,
+                        use_legacy_doji=False, legacy_doji_body_frac=0.20, legacy_doji_position=-6):
     """Numba-optimized score calculation with momentum tracking for bars 3 and 4.
     Calculates weighted trading score based on:
     - Recent 4 HA candles (body size normalized by ATR, weighted by recency)
@@ -153,19 +154,35 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
             penalty = (min_prev_size - current_size) * penalty_weight
             score -= penalty
 
-    # Context-specific doji quality integration
-    if context_quality > doji_threshold:
-        if is_entry:
-            # Bullish hammer reduces entry score (bearish signal for entry)
-            score -= doji_weight * context_quality
-        else:
-            # Bearish momentum loss increases exit score (bearish signal for exit)
-            score += doji_weight * context_quality
+    # Context-specific doji integration
+    if use_legacy_doji:
+        # Legacy binary doji logic (exact reproduction of original)
+        try:
+            prior_idx = legacy_doji_position
+            prior_body = abs(ha_close[prior_idx] - ha_open[prior_idx])
+            if prior_body < legacy_doji_body_frac * atr_cur:
+                if is_entry:
+                    if ha_close[prior_idx] < ha_open[prior_idx]:
+                        score += doji_weight
+                else:
+                    if ha_close[prior_idx] > ha_open[prior_idx]:
+                        score += doji_weight
+        except:
+            pass
+    else:
+        # New quality-based logic
+        if context_quality > doji_threshold:
+            if is_entry:
+                # Bullish hammer reduces entry score (bearish signal for entry)
+                score -= doji_weight * context_quality
+            else:
+                # Bearish momentum loss increases exit score (bearish signal for exit)
+                score += doji_weight * context_quality
 
     return score
 
 @jit(nopython=True, cache=True)
-def get_bearish_momentum_loss_quality_numba(ha_open, ha_close, ha_high, ha_low, lookback=5, idx=0):
+def get_bearish_momentum_loss_quality_numba(ha_open, ha_close, ha_high, ha_low, doji_lookback_bear=5, idx=0):
     """
     Detects loss of growing momentum in bullish sequences.
     Only used for exit signals (is_entry = False).
@@ -175,7 +192,7 @@ def get_bearish_momentum_loss_quality_numba(ha_open, ha_close, ha_high, ha_low, 
     bullish_sequence = []
     red_emergence_count = 0
 
-    for i in range(lookback):
+    for i in range(doji_lookback_bear):
         pos = idx - i
         if pos < 0:
             continue
@@ -217,7 +234,7 @@ def get_bearish_momentum_loss_quality_numba(ha_open, ha_close, ha_high, ha_low, 
     return min(1.0, (shrinkage_score * 0.5) + (red_penalty * 0.3) + (upper_shadow_penalty * 0.2))
 
 @jit(nopython=True, cache=True)
-def get_bullish_hammer_quality_numba(ha_open, ha_close, ha_high, ha_low, low_prices, atr_cur, support_lookback=15, hammer_atr_factor=0.5, idx=0):
+def get_bullish_hammer_quality_numba(ha_open, ha_close, ha_high, ha_low, low_prices, atr_cur, doji_lookback_bull=15, hammer_atr_factor=0.5, idx=0):
     """
     Detects hammer patterns with sharp rejection at support.
     Only used for entry signals (is_entry = True).
@@ -241,7 +258,7 @@ def get_bullish_hammer_quality_numba(ha_open, ha_close, ha_high, ha_low, low_pri
 
     # 2. Support proximity for double bottom confirmation
     support_level = ha_l  # Initialize with current low
-    for i in range(min(support_lookback, idx + 1)):
+    for i in range(min(doji_lookback_bull, idx + 1)):
         pos = idx - i
         if pos >= 0 and low_prices[pos] < support_level:
             support_level = low_prices[pos]
@@ -357,6 +374,10 @@ class HeikinAshiWeightedStrategy(Strategy):
     # Stop in ATR multiples
     stop_atr_mult = 1.5
 
+    # Legacy doji parameters (for backward compatibility)
+    doji_body_frac = 0.20       # Original doji body fraction (now optimizable)
+    legacy_doji_position = -6   # Original doji position (now optimizable)
+
     # Context-specific doji parameters
     # Bearish momentum loss parameters (for exit signals only)
     doji_lookback_bear = 5      # Lookback periods for analyzing bullish sequences
@@ -368,8 +389,8 @@ class HeikinAshiWeightedStrategy(Strategy):
     hammer_atr_factor = 0.5     # Hammer shadow length as fraction of ATR
 
     # Separate weights for context-specific signals
-    weight_bear_momentum = 0.35 # Weight for bearish momentum loss (exit signal)
-    weight_bull_hammer = 0.45   # Weight for bullish hammer rejection (entry signal)
+    weight_bear_momentum = 0.0  # Weight for bearish momentum loss (0 = legacy mode)
+    weight_bull_hammer = 0.0    # Weight for bullish hammer rejection (0 = legacy mode)
 
     # Momentum tracking parameters
     weight_bull_bonus = 0.1    # Bonus weight for accelerating bullish momentum
@@ -392,6 +413,9 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.weight_bull_penalty = self.weight_bull_penalty / 100.0
         self.weight_bear_penalty = self.weight_bear_penalty / 100.0
         self.stop_atr_mult = self.stop_atr_mult / 100.0
+
+        # Scale legacy doji parameters
+        self.doji_body_frac = self.doji_body_frac / 100.0
 
         # Scale new doji parameters
         self.doji_threshold_bear = self.doji_threshold_bear / 100.0
@@ -427,48 +451,72 @@ class HeikinAshiWeightedStrategy(Strategy):
         return float(self.ha_close[idx]) - float(self.ha_open[idx])
 
     def compute_entry_score(self):
-        """Compute weighted entry score using bull weights with bullish hammer quality."""
+        """Compute weighted entry score with legacy or quality-based doji detection."""
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        # Compute bullish hammer quality for entry context
-        bull_quality = get_bullish_hammer_quality_numba(
-            self.ha_open, self.ha_close, self.ha_high, self.ha_low,
-            self.data.Low, np.float32(atr_cur),
-            self.doji_lookback_bull, self.hammer_atr_factor, idx=-1
-        )
+        # Determine which doji system to use
+        use_legacy = (self.weight_bull_hammer == 0.0)
+
+        if use_legacy:
+            # Legacy mode: no quality computation needed
+            bull_quality = 0.0
+            doji_weight = 0.4  # Use default legacy weight
+            doji_threshold = 0.0  # Not used in legacy mode
+        else:
+            # Quality mode: compute bullish hammer quality
+            bull_quality = get_bullish_hammer_quality_numba(
+                self.ha_open, self.ha_close, self.ha_high, self.ha_low,
+                self.data.Low, np.float32(atr_cur),
+                self.doji_lookback_bull, self.hammer_atr_factor, idx=-1
+            )
+            doji_weight = self.weight_bull_hammer
+            doji_threshold = self.doji_threshold_bull
 
         bull_weights = np.array([self.weight_bull_1, self.weight_bull_2, self.weight_bull_3, self.weight_bull_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
-            np.float32(self.weight_bull_hammer), np.float32(self.doji_threshold_bull),
+            np.float32(doji_weight), np.float32(doji_threshold),
             np.float32(bull_quality),
             np.float32(self.weight_bull_bonus), np.float32(self.weight_bear_bonus),
             np.float32(self.weight_bull_penalty), np.float32(self.weight_bear_penalty),
-            is_entry=True
+            is_entry=True, use_legacy_doji=use_legacy,
+            legacy_doji_body_frac=self.doji_body_frac, legacy_doji_position=self.legacy_doji_position
         ))
 
     def compute_exit_score(self):
-        """Compute weighted exit score using bear weights with bearish momentum loss quality."""
+        """Compute weighted exit score with legacy or quality-based doji detection."""
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        # Compute bearish momentum loss quality for exit context
-        bear_quality = get_bearish_momentum_loss_quality_numba(
-            self.ha_open, self.ha_close, self.ha_high, self.ha_low,
-            self.doji_lookback_bear, idx=-1
-        )
+        # Determine which doji system to use
+        use_legacy = (self.weight_bear_momentum == 0.0)
+
+        if use_legacy:
+            # Legacy mode: no quality computation needed
+            bear_quality = 0.0
+            doji_weight = 0.3  # Use default legacy weight
+            doji_threshold = 0.0  # Not used in legacy mode
+        else:
+            # Quality mode: compute bearish momentum loss quality
+            bear_quality = get_bearish_momentum_loss_quality_numba(
+                self.ha_open, self.ha_close, self.ha_high, self.ha_low,
+                self.doji_lookback_bear, idx=-1
+            )
+            doji_weight = self.weight_bear_momentum
+            doji_threshold = self.doji_threshold_bear
 
         bear_weights = np.array([self.weight_bear_1, self.weight_bear_2, self.weight_bear_3, self.weight_bear_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
-            np.float32(self.weight_bear_momentum), np.float32(self.doji_threshold_bear),
+            np.float32(doji_weight), np.float32(doji_threshold),
             np.float32(bear_quality),
             np.float32(self.weight_bull_bonus), np.float32(self.weight_bear_bonus),
             np.float32(self.weight_bull_penalty), np.float32(self.weight_bear_penalty),
-            is_entry=False
+            is_entry=False, use_legacy_doji=use_legacy,
+            legacy_doji_body_frac=self.doji_body_frac, legacy_doji_position=self.legacy_doji_position
         ))
 
     def next(self):
@@ -526,9 +574,10 @@ def analyze_sambo_results(optimize_result):
 
         # Create DataFrame from parameter vectors
         param_names = ['atr_period', 'weight_bull_1', 'weight_bull_2', 'weight_bull_3', 'weight_bull_4',
-                      'weight_bull_doji', 'weight_bear_1', 'weight_bear_2', 'weight_bear_3', 'weight_bear_4',
-                      'weight_bear_doji', 'weight_bull_bonus', 'weight_bear_bonus',
-                      'weight_bull_penalty', 'weight_bear_penalty', 'stop_atr_mult']
+                      'weight_bear_1', 'weight_bear_2', 'weight_bear_3', 'weight_bear_4',
+                      'doji_lookback_bear', 'doji_threshold_bear', 'doji_lookback_bull', 'doji_threshold_bull',
+                      'hammer_atr_factor', 'weight_bear_momentum', 'weight_bull_hammer',
+                      'weight_bull_bonus', 'weight_bear_bonus', 'weight_bull_penalty', 'weight_bear_penalty', 'stop_atr_mult']
 
         # Convert parameter vectors to DataFrame
         history_data = []
@@ -595,7 +644,8 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    # Use random optimization method
+    #'''
+    # Use random optimization method with full backward compatibility
     stats, heatmap, optimize_result = bt.optimize(
         atr_period=(8, 20),
         weight_bull_1=(25, 35),  # 0.25 to 0.35
@@ -606,14 +656,18 @@ def run(path):
         weight_bear_2=(10, 25),  # 0.10 to 0.20
         weight_bear_3=(10, 25),  # 0.15 to 0.20
         weight_bear_4=(10, 25),  # 0.15 to 0.25
-        # Context-specific doji parameters
-        doji_lookback_bear=(3, 8),       # 3-8 periods for bear momentum analysis
-        doji_threshold_bear=(20, 60),    # 0.3-0.6 bear quality threshold
-        doji_lookback_bull=(2, 20),     # 2-20 periods for bull support analysis
-        doji_threshold_bull=(30, 60),    # 0.3-0.6 bull quality threshold
-        hammer_atr_factor=(30, 70),      # 0.3-0.7 ATR fraction for hammer
-        weight_bear_momentum=(20, 50),   # 0.2-0.5 bear momentum weight
-        weight_bull_hammer=(30, 60),     # 0.3-0.6 bull hammer weight
+        # Legacy doji parameters (include original values)
+        doji_body_frac=(10, 30),        # 0.10-0.30 (includes 0.20)
+        legacy_doji_position=(-8, -4),  # -8 to -4 (includes -6)
+        # Context-specific doji parameters (include original hardcoded values)
+        doji_lookback_bear=(3, 8),      # 3-8 (includes 5)
+        doji_threshold_bear=(20, 60),   # 0.2-0.6 bear quality threshold
+        doji_lookback_bull=(10, 25),    # 10-25 (includes 15)
+        doji_threshold_bull=(30, 60),   # 0.3-0.6 bull quality threshold
+        hammer_atr_factor=(30, 70),     # 0.3-0.7 ATR fraction (includes 0.5)
+        # New weights (0 enables legacy mode)
+        weight_bear_momentum=(0, 50),   # 0.0-0.5 (0 = legacy mode)
+        weight_bull_hammer=(0, 60),     # 0.0-0.6 (0 = legacy mode)
         weight_bull_bonus=(0, 15),  # 0.05 to 0.15
         weight_bear_bonus=(0, 15),  # 0.05 to 0.15
         weight_bull_penalty=(0, 15),  # 0.00 to 0.10
@@ -626,6 +680,7 @@ def run(path):
         return_heatmap=True,
         return_optimization=True
     )
+    #'''
 
     '''
     stats, heatmap = bt.optimize(
@@ -674,11 +729,9 @@ def run(path):
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
 
     plot_filename = f"HeikinAshi_weighted_{date.today()}.html"
-    heatmap_filename = f"HeikinAshi_weighted_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
-    plot_heatmaps(heatmap, filename=heatmap_filename)
 
-    print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
+    print(f"Plot saved as: {plot_filename}")
 
     # Analyze SAMBO optimization results
     analyze_sambo_results(optimize_result)
