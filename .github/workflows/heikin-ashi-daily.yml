@@ -58,7 +58,7 @@ jobs:
             # Install most dependencies first
             pip install -r requirements.txt
             # Try to install sambo with error handling
-            pip uninstall sambo
+            pip uninstall sambo --break-system-packages -y
             pip install 'sambo[all]' || echo "Warning: sambo installation failed, will use fallback optimization method"
           else
             echo "requirements.txt not found; skipping pip install"
