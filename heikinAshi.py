@@ -429,7 +429,7 @@ def run(path):
         stop_atr_mult=150,
         maximize='Return [%]',
         method="grid",
-        max_tries=500,
+        max_tries=100000,
         random_state=42,
         return_heatmap=True
     )
