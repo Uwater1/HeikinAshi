@@ -447,25 +447,25 @@ def run(path):
         print(f"Warning: Could not set process priority: {e}\n")
 
     stats, heatmap, optimize_result = bt.optimize(
-        atr_period=14,
+        atr_period=(10, 20),
         weight_bull_1=(25, 35),  # 0.25 to 0.35
-        weight_bull_2=(15, 25),  # 0.15 to 0.25
+        weight_bull_2=(15, 30),  # 0.15 to 0.25
         weight_bull_3=(30, 40),  # 0.30 to 0.40
-        weight_bull_4=(40, 50),  # 0.40 to 0.50
-        weight_bull_doji=(35, 45),  # 0.35 to 0.45
-        weight_bear_1=(15, 25),  # 0.15 to 0.25
-        weight_bear_2=(10, 20),  # 0.10 to 0.20
-        weight_bear_3=(15, 20),  # 0.15 to 0.20
-        weight_bear_4=(15, 25),  # 0.15 to 0.25
-        weight_bear_doji=(30, 35),  # 0.30 to 0.35
-        weight_bull_bonus=(5, 15),  # 0.05 to 0.15
-        weight_bear_bonus=(5, 15),  # 0.05 to 0.15
-        weight_bull_penalty=(0, 10),  # 0.00 to 0.10
-        weight_bear_penalty=(0, 10),  # 0.00 to 0.10
+        weight_bull_4=(35, 50),  # 0.40 to 0.50
+        weight_bull_doji=(30, 45),  # 0.35 to 0.45
+        weight_bear_1=(10, 25),  # 0.15 to 0.25
+        weight_bear_2=(10, 25),  # 0.10 to 0.20
+        weight_bear_3=(10, 25),  # 0.15 to 0.20
+        weight_bear_4=(10, 25),  # 0.15 to 0.25
+        weight_bear_doji=(25, 40),  # 0.30 to 0.35
+        weight_bull_bonus=(0, 15),  # 0.05 to 0.15
+        weight_bear_bonus=(0, 15),  # 0.05 to 0.15
+        weight_bull_penalty=(0, 15),  # 0.00 to 0.10
+        weight_bear_penalty=(0, 15),  # 0.00 to 0.10
         stop_atr_mult=150,
         maximize='Return [%]',
         method="sambo",
-        max_tries=10000,
+        max_tries=100000,
         random_state=42,
         return_heatmap=True,
         return_optimization=True
@@ -500,15 +500,15 @@ def run(path):
     print("\n--- Best Parameters ---")
     st = stats._strategy
     print(f"  atr_period: {st.atr_period}")
-    print(f"  weight_bull_1: {st.weight_bull_1 / 100:.2f} | weight_bull_2: {st.weight_bull_2 / 100:.2f}")
-    print(f"  weight_bull_3: {st.weight_bull_3 / 100:.2f} | weight_bull_4: {st.weight_bull_4 / 100:.2f}")
-    print(f"  weight_bull_doji: {st.weight_bull_doji / 100:.2f}")
-    print(f"  weight_bull_bonus: {st.weight_bull_bonus / 100:.2f} | weight_bear_bonus: {st.weight_bear_bonus / 100:.2f}")
-    print(f"  weight_bull_penalty: {st.weight_bull_penalty / 100:.2f} | weight_bear_penalty: {st.weight_bear_penalty / 100:.2f}")
-    print(f"  weight_bear_1: {st.weight_bear_1 / 100:.2f} | weight_bear_2: {st.weight_bear_2 / 100:.2f}")
-    print(f"  weight_bear_3: {st.weight_bear_3 / 100:.2f} | weight_bear_4: {st.weight_bear_4 / 100:.2f}")
-    print(f"  weight_bear_doji: {st.weight_bear_doji / 100:.2f}")
-    print(f"  stop_atr_mult: {st.stop_atr_mult / 100:.2f}")
+    print(f"  weight_bull_1: {st.weight_bull_1} | weight_bull_2: {st.weight_bull_2}")
+    print(f"  weight_bull_3: {st.weight_bull_3} | weight_bull_4: {st.weight_bull_4}")
+    print(f"  weight_bull_doji: {st.weight_bull_doji}")
+    print(f"  weight_bull_bonus: {st.weight_bull_bonus} | weight_bear_bonus: {st.weight_bear_bonus}")
+    print(f"  weight_bull_penalty: {st.weight_bull_penalty} | weight_bear_penalty: {st.weight_bear_penalty}")
+    print(f"  weight_bear_1: {st.weight_bear_1} | weight_bear_2: {st.weight_bear_2}")
+    print(f"  weight_bear_3: {st.weight_bear_3} | weight_bear_4: {st.weight_bear_4}")
+    print(f"  weight_bear_doji: {st.weight_bear_doji}")
+    print(f"  stop_atr_mult: {st.stop_atr_mult}")
 
     plot_filename = f"HeikinAshi_weighted_{date.today()}.html"
     heatmap_filename = f"HeikinAshi_weighted_heatmap_{date.today()}.html"
