@@ -88,6 +88,7 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
 
     # Pre-allocate arrays
     bar_sizes = np.empty(lookback, dtype=np.float32)
+    signed_norms = np.empty(lookback, dtype=np.float32)
 
     # Find selected bars: skip reds before first desired, then include all remaining
     selected = []
@@ -112,12 +113,13 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
             body = ha_c - ha_o  # positive for green, negative for red
         else:
             body = ha_o - ha_c  # positive for red, negative for green
-        bar_size = body / atr_cur
-        bar_sizes[i] = bar_size + 0.01 if bar_size > 0 else 0
+        signed_norm = body / atr_cur
+        signed_norms[i] = signed_norm
+        bar_sizes[i] = abs(signed_norm)
 
     # Score only for selected bars
     for j, i in enumerate(selected):
-        score += weights[j] * bar_sizes[i]
+        score += weights[j] * signed_norms[i]
 
     # Momentum tracking for the 3rd and 4th selected bars
     if len(selected) >= 3:
@@ -478,7 +480,7 @@ def run(path):
         atr_period=(8, 20),
         weight_bull_1=(25, 35),  # 0.25 to 0.35
         weight_bull_2=(15, 30),  # 0.15 to 0.25
-        weight_bull_3=(25, 35),  # 0.30 to 0.40
+        weight_bull_3=(30, 40),  # 0.30 to 0.40
         weight_bull_4=(35, 50),  # 0.40 to 0.50
         weight_bull_doji=(30, 45),  # 0.35 to 0.45
         weight_bear_1=(10, 25),  # 0.15 to 0.25
@@ -494,7 +496,7 @@ def run(path):
         maximize='Return [%]',
         method="sambo",
         max_tries=10000,
-        random_state=1,
+        random_state=42,
         return_heatmap=True,
         return_optimization=True
     )
