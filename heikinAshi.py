@@ -380,36 +380,64 @@ class HeikinAshiWeightedStrategy(Strategy):
 
 def analyze_sambo_results(optimize_result):
     """Analyze and display SAMBO optimization results."""
-    if not optimize_result or 'history' not in optimize_result:
+    # Check if optimize_result is None or empty
+    if not optimize_result:
+        print("No SAMBO optimization results available.")
+        return
+
+    # Check if optimize_result has the expected structure for SAMBO
+    if not hasattr(optimize_result, 'keys') or 'xv' not in optimize_result:
         print("No SAMBO optimization results available.")
         return
 
     print("\n=== SAMBO Optimization Analysis ===")
 
-    # Extract optimization history
-    history = optimize_result.get('history', [])
+    # Extract optimization results from SAMBO format
+    xv = optimize_result.get('xv', [])
+    funv = optimize_result.get('funv', [])
 
-    if history:
-        # Convert history to DataFrame for analysis
+    if len(xv) > 0 and len(funv) > 0:
+        # Convert to DataFrame for analysis
         import pandas as pd
-        history_df = pd.DataFrame(history)
+
+        # Create DataFrame from parameter vectors
+        param_names = ['atr_period', 'weight_bull_1', 'weight_bull_2', 'weight_bull_3', 'weight_bull_4',
+                      'weight_bull_doji', 'weight_bear_1', 'weight_bear_2', 'weight_bear_3', 'weight_bear_4',
+                      'weight_bear_doji', 'weight_bull_bonus', 'weight_bear_bonus',
+                      'weight_bull_penalty', 'weight_bear_penalty', 'stop_atr_mult']
+
+        # Convert parameter vectors to DataFrame
+        history_data = []
+        for i, params in enumerate(xv):
+            row = dict(zip(param_names, params))
+            row['Return [%]'] = funv[i]
+            history_data.append(row)
+
+        history_df = pd.DataFrame(history_data)
 
         print(f"Total evaluations: {len(history_df)}")
-        print(f"Best result found: {history_df.iloc[-1]['Return [%]']:.2f}%")
+        print(f"Best result found: {history_df['Return [%]'].max():.2f}%")
 
         # Show parameter evolution
         print("\nParameter evolution:")
-        for param in ['atr_period', 'weight_1', 'weight_2', 'weight_3', 'weight_4',
-                     'weight_doji', 'entry_threshold', 'exit_threshold', 'stop_atr_mult']:
+        for param in param_names:
             if param in history_df.columns:
-                print(f"  {param}: {history_df[param].iloc[0]:.3f} -> {history_df[param].iloc[-1]:.3f}")
+                print(f"  {param}: {history_df[param].min():.3f} -> {history_df[param].max():.3f}")
 
-    # Display optimization statistics if available
-    if 'stats' in optimize_result:
-        stats = optimize_result['stats']
+        # Show optimization statistics
         print(f"\nOptimization Statistics:")
-        print(f"  Time taken: {stats.get('time_elapsed', 'N/A')} seconds")
-        print(f"  Evaluations per second: {stats.get('evals_per_sec', 'N/A'):.1f}")
+        print(f"  Total evaluations: {len(history_df)}")
+        print(f"  Best Return [%]: {history_df['Return [%]'].max():.2f}")
+        print(f"  Worst Return [%]: {history_df['Return [%]'].min():.2f}")
+        print(f"  Average Return [%]: {history_df['Return [%]'].mean():.2f}")
+
+        # Show success status if available
+        if 'success' in optimize_result:
+            print(f"  Success: {optimize_result['success']}")
+        if 'message' in optimize_result:
+            print(f"  Message: {optimize_result['message']}")
+    else:
+        print("No optimization history available in SAMBO result.")
 
 
 # ========================================
@@ -463,7 +491,7 @@ def run(path):
         stop_atr_mult=150,
         maximize='Return [%]',
         method="sambo",
-        max_tries=100000,
+        max_tries=10000,
         random_state=42,
         return_heatmap=True,
         return_optimization=True
@@ -518,8 +546,8 @@ def run(path):
     # Analyze SAMBO optimization results
     analyze_sambo_results(optimize_result)
 
-    print("\n--- Top 150 parameter sets (by Return [%]): (.csv) ---")
-    top_df = heatmap.sort_values(ascending=False).iloc[:150].reset_index()
+    print("\n--- Top 100 parameter sets (by Return [%]): (.csv) ---")
+    top_df = heatmap.sort_values(ascending=False).iloc[:100].reset_index()
     print(top_df.to_csv(index=False,float_format='%.2f'))
 
 # ========================================
