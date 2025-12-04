@@ -608,12 +608,12 @@ def run(path):
         weight_bear_4=(10, 25),  # 0.15 to 0.25
         # Context-specific doji parameters
         doji_lookback_bear=(3, 8),       # 3-8 periods for bear momentum analysis
-        doji_threshold_bear=(30, 60),    # 0.3-0.6 bear quality threshold
-        doji_lookback_bull=(10, 25),     # 10-25 periods for bull support analysis
+        doji_threshold_bear=(20, 60),    # 0.3-0.6 bear quality threshold
+        doji_lookback_bull=(2, 20),     # 2-20 periods for bull support analysis
         doji_threshold_bull=(30, 60),    # 0.3-0.6 bull quality threshold
         hammer_atr_factor=(30, 70),      # 0.3-0.7 ATR fraction for hammer
-        weight_bear_momentum=(25, 45),   # 0.25-0.45 bear momentum weight
-        weight_bull_hammer=(35, 55),     # 0.35-0.55 bull hammer weight
+        weight_bear_momentum=(20, 50),   # 0.2-0.5 bear momentum weight
+        weight_bull_hammer=(30, 60),     # 0.3-0.6 bull hammer weight
         weight_bull_bonus=(0, 15),  # 0.05 to 0.15
         weight_bear_bonus=(0, 15),  # 0.05 to 0.15
         weight_bull_penalty=(0, 15),  # 0.00 to 0.10
@@ -621,7 +621,7 @@ def run(path):
         stop_atr_mult=150,
         maximize='Return [%]',
         method="sambo",
-        max_tries=10000,
+        max_tries=50000,
         random_state=1,
         return_heatmap=True,
         return_optimization=True
