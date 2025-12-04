@@ -378,40 +378,6 @@ class HeikinAshiWeightedStrategy(Strategy):
                     except Exception:
                         pass
 
-def analyze_sambo_results(optimize_result):
-    """Analyze and display SAMBO optimization results."""
-    if not optimize_result or 'history' not in optimize_result:
-        print("No SAMBO optimization results available.")
-        return
-
-    print("\n=== SAMBO Optimization Analysis ===")
-
-    # Extract optimization history
-    history = optimize_result.get('history', [])
-
-    if history:
-        # Convert history to DataFrame for analysis
-        import pandas as pd
-        history_df = pd.DataFrame(history)
-
-        print(f"Total evaluations: {len(history_df)}")
-        print(f"Best result found: {history_df.iloc[-1]['Return [%]']:.2f}%")
-
-        # Show parameter evolution
-        print("\nParameter evolution:")
-        for param in ['atr_period', 'weight_1', 'weight_2', 'weight_3', 'weight_4',
-                     'weight_doji', 'entry_threshold', 'exit_threshold', 'stop_atr_mult']:
-            if param in history_df.columns:
-                print(f"  {param}: {history_df[param].iloc[0]:.3f} -> {history_df[param].iloc[-1]:.3f}")
-
-    # Display optimization statistics if available
-    if 'stats' in optimize_result:
-        stats = optimize_result['stats']
-        print(f"\nOptimization Statistics:")
-        print(f"  Time taken: {stats.get('time_elapsed', 'N/A')} seconds")
-        print(f"  Evaluations per second: {stats.get('evals_per_sec', 'N/A'):.1f}")
-
-
 # ========================================
 # Main Backtest Runner
 # ========================================
@@ -444,7 +410,7 @@ def run(path):
         print(f"Warning: Could not set process priority: {e}\n")
 
     # Use random optimization method
-    stats, heatmap, optimize_result = bt.optimize(
+    stats, heatmap = bt.optimize(
         atr_period=(8, 20),
         weight_bull_1=(25, 35),  # 0.25 to 0.35
         weight_bull_2=(15, 30),  # 0.15 to 0.25
@@ -462,11 +428,10 @@ def run(path):
         weight_bear_penalty=(0, 15),  # 0.00 to 0.10
         stop_atr_mult=150,
         maximize='Return [%]',
-        method="sambo",
-        max_tries=100000,
+        method="grid",
+        max_tries=163840,
         random_state=42,
-        return_heatmap=True,
-        return_optimization=True
+        return_heatmap=True
     )
 
     '''
@@ -514,10 +479,6 @@ def run(path):
     plot_heatmaps(heatmap, filename=heatmap_filename)
 
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
-
-    # Analyze SAMBO optimization results
-    analyze_sambo_results(optimize_result)
-
     print("\n--- Top 150 parameter sets (by Return [%]): (.csv) ---")
     top_df = heatmap.sort_values(ascending=False).iloc[:150].reset_index()
     print(top_df.to_csv(index=False,float_format='%.2f'))

@@ -1,156 +1,164 @@
-This is an advanced optimization problem. Moving from a binary check (`is_doji = True/False`) to a continuous **Quality Score** will significantly smooth your backtest parameter surface and likely improve robustness.
+This report synthesizes the transition from binary Doji detection to a **Quality-Based Asymmetric Scoring System**.
 
-Here is the research and implementation plan for your **Quality-Based Doji Scoring** and **Dynamic Thresholds**.
+### Executive Summary
 
-### 1\. The Strategy: Quantifying "Doji Quality"
+Standard Heikin Ashi (HA) algorithms often fail because they treat all Dojis equally and assume market tops and bottoms behave symmetrically. Research indicates two critical pivots for improvement:
 
-Instead of a boolean flag, we calculate a `quality` score (0.0 to 1.0) for each candle. The final signal weight becomes:
-$$\text{Weight} = \text{Base Weight} \times \text{Quality Score}$$
+1.  **Volatility Normalization:** A "small body" is relative. It must be defined by the Average True Range (ATR), not fixed points.
+2.  **Market Asymmetry:**
+      * **Tops (Bearish):** Characterized by **Momentum Decay** (shrinking bodies, "Rollover").
+      * **Bottoms (Bullish):** Characterized by **Violent Rejection** (long shadows, "Sharp Turns", support interaction).
 
-The Quality Score is composed of three factors:
+-----
 
-1.  **Body Factor ($Q_{body}$):** The smaller the body relative to volatility (ATR), the higher the score.
-2.  **Shadow Factor ($Q_{shadow}$):** Long shadows indicate rejection/indecision. Longer is better.
-3.  **Type Factor ($Q_{type}$):** Specific shapes (Dragonfly, Gravestone, Long-Legged) get multipliers.
+### Observation 1: The "Quality Score" Math
 
-### 2\. Implementation logic
+**Problem:** A binary check (`if body < threshold`) creates optimization "cliffs." A body slightly above the threshold gets 0 weight, while one slightly below gets full weight.
+**Solution:** Use Linear Decay. The closer the body is to 0, the higher the score.
 
-#### A. Dynamic Body Threshold (ATR-Based)
+**Formula:**
+$$Q_{body} = 1.0 - \left( \frac{\text{Body Size}}{\text{ATR} \times \text{Factor}} \right)$$
+*If the body size exceeds the limit, the score is 0. If the body is 0 (flat), the score is 1.*
 
-Hardcoding `doji_body_frac` fails when volatility changes. We use ATR to normalize.
-
-  * **Logic:** A body of 5 ticks is a Doji in high volatility (ATR=100) but a trend bar in low volatility (ATR=6).
-  * **Formula:** `max_body_size = doji_body_atr_frac * atr_cur`
-
-#### B. The "Hammer" & "Doji" Types
-
-In Heikin Ashi (HA), specific Dojis mean different things:
-
-  * **Classic Doji:** Small body, shadows on both sides. *Sign: Indecision.*
-  * **Dragonfly/Hammer-like:** Small body, long lower shadow, no upper shadow. *Sign: Bullish Reversal.*
-  * **Gravestone/Star-like:** Small body, long upper shadow, no lower shadow. *Sign: Bearish Reversal.*
-
-### 3\. Improved Code Structure (Backtrader Compatible)
-
-This implementation replaces your boolean logic with a continuous scoring system.
+**Implementation Code:**
 
 ```python
-import backtest as bt # Assuming standard Backtrader or compatible framework
-
-class HeikinAshiStrategy(bt.Strategy):
-    params = (
-        ('atr_period', 14),
-        ('doji_atr_frac', 0.1),   # Dynamic threshold: Body must be < 10% of ATR
-        ('weight_doji_base', 10), # Base score added when Doji is found
-        ('prior_idx', -6),        # Lookback index (subject to optimize)
-    )
-
-    def __init__(self):
-        # ... existing HA calculation code ...
-        self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period)
-
-    def calculate_doji_score(self, idx):
-        # 1. Fetch HA values
-        ha_o = self.ha_open[idx]
-        ha_h = self.ha_high[idx]
-        ha_l = self.ha_low[idx]
-        ha_c = self.ha_close[idx]
-        
-        # 2. Basic Dimensions
-        body_size = abs(ha_c - ha_o)
-        upper_shadow = ha_h - max(ha_o, ha_c)
-        lower_shadow = min(ha_o, ha_c) - ha_l
-        total_range = ha_h - ha_l
-        
-        # Avoid division by zero
-        if total_range == 0: return 0 
-
-        # 3. Dynamic Threshold Check (Gatekeeper)
-        # If body is too big relative to ATR, it's not a Doji at all.
-        # current ATR at that specific index
-        current_atr = self.atr[idx] 
-        if body_size > (self.params.doji_atr_frac * current_atr):
-            return 0.0
-
-        # --- QUALITY SCORING START ---
-
-        # A. Body Quality (0.0 to 1.0)
-        # The closer the body is to 0, the closer this is to 1.0
-        q_body = 1.0 - (body_size / (self.params.doji_atr_frac * current_atr))
-
-        # B. Shadow Intensity (0.0 to 1.0)
-        # We want long shadows relative to the body or range.
-        # Using Shadow / ATR ratio allows us to reward volatile rejection.
-        shadow_dominance = (upper_shadow + lower_shadow) / total_range
-        
-        # C. Type Classification & Multipliers
-        # Heikin Ashi Hammer (Bullish Reversal Sign): Long Lower, No Upper
-        is_hammer_bull = (lower_shadow > body_size * 2) and (upper_shadow < body_size * 0.5)
-        
-        # Heikin Ashi Star (Bearish Reversal Sign): Long Upper, No Lower
-        is_star_bear = (upper_shadow > body_size * 2) and (lower_shadow < body_size * 0.5)
-        
-        # Long Legged Doji: Huge shadows on both sides
-        is_long_legged = (lower_shadow > body_size) and (upper_shadow > body_size)
-
-        type_multiplier = 1.0
-        if is_hammer_bull or is_star_bear:
-            type_multiplier = 1.5  # Boost score for directional rejection
-        elif is_long_legged:
-            type_multiplier = 1.2  # Boost for extreme indecision
-
-        # Final Quality Calculation
-        # We weight shadow dominance slightly less than body purity
-        final_quality = (q_body * 0.7 + shadow_dominance * 0.3) * type_multiplier
-
-        return final_quality
-
-    def next(self):
-        # ... existing logic ...
-        
-        # Calculate score using the helper function
-        doji_quality = self.calculate_doji_score(self.params.prior_idx)
-        
-        if doji_quality > 0:
-            # Apply the weighted score
-            # If is_entry logic matches your reversal direction:
-            
-            score_change = self.params.weight_doji_base * doji_quality
-            
-            # Example directional logic:
-            prior_idx = self.params.prior_idx
-            ha_c = self.ha_close[prior_idx]
-            ha_o = self.ha_open[prior_idx]
-            
-            # Bullish Doji Signal (Green Doji or Hammer)
-            if ha_c > ha_o: 
-                 self.score += score_change
-            # Bearish Doji Signal (Red Doji or Star)
-            else:
-                 self.score -= score_change # or whatever your scoring logic is
+def get_volatility_normalized_score(self, body_size, atr_value, sensitivity_factor=0.1):
+    """
+    Returns a float 0.0 to 1.0 based on how 'doji-like' the bar is relative to ATR.
+    sensitivity_factor: Max body size as a fraction of ATR (e.g., 0.1 = 10% of ATR).
+    """
+    max_allowed_body = atr_value * sensitivity_factor
+    
+    if max_allowed_body == 0: return 0.0
+    if body_size > max_allowed_body: return 0.0
+    
+    # Linear Decay: 1.0 for perfect doji, 0.0 for body at limit
+    return 1.0 - (body_size / max_allowed_body)
 ```
 
-### 4\. Key Improvements Explained
+-----
 
-1.  **`q_body` (Linear Decay):**
+### Observation 2: Bearish Asymmetry (The "Rollover")
 
-      * Previously: If `body` was 0.09 and limit was 0.1, weight was 100%. If `body` was 0.11, weight was 0%.
-      * Now: A perfect flat doji gets 100% weight. A "fat" doji near the limit gets nearly 0% weight. This removes "cliff-edge" optimization artifacts.
+**Market Behavior:** Bull trends rarely stop abruptly. They run out of steam. We look for **Deceleration**.
+**Key Indicators:**
 
-2.  **`shadow_dominance`:**
+1.  **Body Shrinkage:** Current Green body is smaller than the average of previous Green bodies.
+2.  **Shadow Emergence:** Green HA candles should have *no* lower shadow. If one appears, buying pressure is weakening.
 
-      * This rewards "high-energy" indecision. A tiny Doji in a flat market is less significant than a massive "Long-Legged Doji" that signifies a violent battle between bulls and bears.
+**Implementation Code:**
 
-3.  **Hammer Detection (`is_hammer_bull`):**
+```python
+def get_bear_rollover_quality(self, lookback=3):
+    """
+    Detects momentum loss at the top.
+    Returns 0.0 to 1.0 based on deceleration magnitude.
+    """
+    # 1. Fetch recent bodies to establish a baseline
+    recent_bodies = [abs(self.ha_close[-i] - self.ha_open[-i]) for i in range(1, lookback+1)]
+    avg_recent_body = sum(recent_bodies) / lookback if recent_bodies else 1.0
+    
+    current_body = abs(self.ha_close[0] - self.ha_open[0])
+    
+    # 2. Calculate Deceleration (Linear Decay)
+    # Score is high if current body is tiny compared to recent average
+    momentum_score = 0.0
+    if current_body < avg_recent_body:
+        momentum_score = 1.0 - (current_body / avg_recent_body)
+        
+    # 3. Check for "Rotting" Signal (Lower Shadow on Green Candle)
+    # In a strong uptrend, HA Green candles have flat bottoms. 
+    # A lower shadow indicates weakness.
+    shadow_penalty_score = 0.0
+    ha_open, ha_close = self.ha_open[0], self.ha_close[0]
+    
+    if ha_close > ha_open: # If currently Green
+        lower_shadow = ha_open - self.ha_low[0]
+        # If lower shadow exists and is significant (> 20% of body)
+        if lower_shadow > (current_body * 0.2):
+            shadow_penalty_score = 0.5 # Boost the bearish signal
+            
+    # Weighted combination
+    return min(1.0, (momentum_score * 0.7) + (shadow_penalty_score * 0.3))
+```
 
-      * You mentioned finding hammer-like indicators useful. In Heikin Ashi, a **Green candle with no lower shadow** is a trend signal, but a **candle with a long lower shadow and small body** (Hammer) is a reversal warning. The code explicitly detects this geometry and boosts the weight (`type_multiplier = 1.5`).
+-----
 
-### 5\. Optimization Tips
+### Observation 3: Bullish Asymmetry (The "Sharp Turn")
 
-When running `bt.optimize`, you can now refine these ranges:
+**Market Behavior:** Panic selling creates V-bottoms. We look for **Structural Rejection**.
+**Key Indicators:**
 
-  * `doji_atr_frac`: Range `0.05` to `0.2` (Strict to Loose).
-  * `weight_doji_base`: Range `5` to `50`.
+1.  **The Hammer (Pin Bar):** Long lower shadow indicating intraday rejection.
+2.  **Support Proximity:** A Doji floating in mid-air is a "falling knife." A Doji at a previous low is a "Double Bottom."
 
-This approach makes your algorithm "aware" of market context. A Doji during high volatility (News event) will now be treated differently than a Doji during a lunch-hour lull.
+[Image of double bottom chart pattern with hammer candle]
 
+**Implementation Code:**
+
+```python
+def get_bull_rejection_quality(self, support_lookback=20):
+    """
+    Detects sharp rejection near structural support.
+    """
+    ha_o, ha_c = self.ha_open[0], self.ha_close[0]
+    ha_l = self.ha_low[0]
+    current_atr = self.atr[0]
+    
+    # 1. Shadow Intensity (The Hammer Shape)
+    # A huge lower shadow relative to ATR implies massive rejection
+    lower_shadow = min(ha_o, ha_c) - ha_l
+    
+    # Cap the score: If shadow is > 50% of ATR, max score achieved
+    shadow_score = min(1.0, lower_shadow / (current_atr * 0.5))
+    
+    # 2. Structural Support (Double Bottom Detection)
+    # Calculate distance from the lowest low of the last 'n' periods
+    recent_period_low = min(self.data.low.get(ago=-1, size=support_lookback))
+    current_low = self.data.low[0]
+    
+    dist_from_support = current_low - recent_period_low
+    
+    # Score is 1.0 if we touched the previous low, 0.0 if we are far away
+    support_score = 0.0
+    tolerance = current_atr * 0.5 # Defined "Zone" of support
+    
+    if dist_from_support < tolerance:
+        support_score = 1.0 - (dist_from_support / tolerance)
+        
+    # Final Bull Score: Shadow is vital, Support is confirmation
+    return (shadow_score * 0.6) + (support_score * 0.4)
+```
+
+-----
+
+### Observation 4: Integration Strategy
+
+Instead of a single `weight_doji`, the final scoring system should separate the weights to account for the asymmetric nature of the market.
+
+**Proposed Parameter Structure:**
+
+  * `weight_bear_rollover` (Optimized, usually lower magnitude because tops are slow)
+  * `weight_bull_rejection` (Optimized, usually higher magnitude because bottoms are fast)
+
+**Logic Snippet:**
+
+```python
+# In next():
+bear_signal = self.get_bear_rollover_quality()
+bull_signal = self.get_bull_rejection_quality()
+
+# Threshold to filter noise (e.g., 0.4)
+if bear_signal > 0.4:
+    self.score -= self.params.weight_bear_rollover * bear_signal
+
+if bull_signal > 0.4:
+    self.score += self.params.weight_bull_rejection * bull_signal
+```
+
+### Next Steps for You
+
+Would you like me to construct the full **`bt.Strategy` class** incorporating these snippets, specifically setting up the `bt.optimize` ranges for the `support_lookback` and `sensitivity_factor`?
+
+https://github.com/zeta-zetra/code
