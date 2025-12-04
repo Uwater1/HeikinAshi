@@ -186,18 +186,7 @@ def compute_heikin_ashi(df):
             df['Close'].to_numpy()
         )
         df['HA_open'] = ha_open
-        df['HA_high'] = ha_highstats, heatmap, optimize_result = backtest.optimize(
-    n1=[10, 100],      # Note: For method="sambo", we
-    n2=[20, 200],      # only need interval end-points
-    n_enter=[10, 40],
-    n_exit=[10, 30],
-    constraint=lambda p: p.n_exit < p.n_enter < p.n1 < p.n2,
-    maximize='Equity Final [$]',
-    method='sambo',
-    max_tries=40,
-    random_state=0,
-    return_heatmap=True,
-    return_optimization=True)
+        df['HA_high'] = ha_high
         df['HA_low'] = ha_low
         df['HA_close'] = ha_close
     return df
@@ -232,11 +221,18 @@ class HeikinAshiWeightedStrategy(Strategy):
     doji_body_frac = 0.20
 
     def init(self):
+        # Scale weights from integers (hundredths) to floats
+        self.weight_1 = self.weight_1 / 100.0
+        self.weight_2 = self.weight_2 / 100.0
+        self.weight_3 = self.weight_3 / 100.0
+        self.weight_4 = self.weight_4 / 100.0
+        self.weight_doji = self.weight_doji / 100.0
+
         # Register ATR indicator
         self.atr = self.I(lambda: indicator_atr(
-            self.data.High, 
-            self.data.Low, 
-            self.data.Close, 
+            self.data.High,
+            self.data.Low,
+            self.data.Close,
             self.atr_period
         ))
 
@@ -382,14 +378,14 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    # Use SAMBO optimization method
+    # Use SAMBO optimization method with integer bounds for weights (scaled by 100)
     stats, heatmap, optimize_result = bt.optimize(
-        atr_period=(8, 20),        # SAMBO uses ranges instead of discrete values
-        weight_1=(0.10, 0.30),
-        weight_2=(0.10, 0.35),
-        weight_3=(0.15, 0.35),
-        weight_4=(0.20, 0.40),
-        weight_doji=(0.20, 0.45),
+        atr_period=(8, 20),
+        weight_1=(10, 30),  # 0.10 to 0.30
+        weight_2=(10, 35),  # 0.10 to 0.35
+        weight_3=(15, 35),  # 0.15 to 0.35
+        weight_4=(20, 40),  # 0.20 to 0.40
+        weight_doji=(20, 45),  # 0.20 to 0.45
         entry_threshold=(0.60, 0.9),
         exit_threshold=(1.1, 1.4),
         stop_atr_mult=(1.2, 2.0),
@@ -422,11 +418,11 @@ def run(path):
     print("\n--- Best Parameters (SAMBO) ---")
     st = stats._strategy
     print(f"  atr_period: {st.atr_period}")
-    print(f"  weight_1: {st.weight_1} | weight_2: {st.weight_2}")
-    print(f"  weight_3: {st.weight_3} | weight_4: {st.weight_4}")
-    print(f"  weight_doji: {st.weight_doji}")
-    print(f"  entry_threshold: {st.entry_threshold} | exit_threshold: {st.exit_threshold}")
-    print(f"  stop_atr_mult: {st.stop_atr_mult}")
+    print(f"  weight_1: {st.weight_1 / 100:.2f} | weight_2: {st.weight_2 / 100:.2f}")
+    print(f"  weight_3: {st.weight_3 / 100:.2f} | weight_4: {st.weight_4 / 100:.2f}")
+    print(f"  weight_doji: {st.weight_doji / 100:.2f}")
+    print(f"  entry_threshold: {st.entry_threshold:.2f} | exit_threshold: {st.exit_threshold:.2f}")
+    print(f"  stop_atr_mult: {st.stop_atr_mult:.2f}")
 
     # Save SAMBO results
     plot_filename = f"HeikinAshi_SAMBO_optimized_{date.today()}.html"

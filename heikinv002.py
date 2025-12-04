@@ -277,23 +277,6 @@ class HeikinAshiWeightedStrategy(Strategy):
     weight_bear_penalty = 0.05 # Penalty weight for decelerating bearish momentum
 
     def init(self):
-        # Scale weights from integers (hundredths) to floats
-        self.weight_bull_1 = self.weight_bull_1 / 100.0
-        self.weight_bull_2 = self.weight_bull_2 / 100.0
-        self.weight_bull_3 = self.weight_bull_3 / 100.0
-        self.weight_bull_4 = self.weight_bull_4 / 100.0
-        self.weight_bull_doji = self.weight_bull_doji / 100.0
-        self.weight_bear_1 = self.weight_bear_1 / 100.0
-        self.weight_bear_2 = self.weight_bear_2 / 100.0
-        self.weight_bear_3 = self.weight_bear_3 / 100.0
-        self.weight_bear_4 = self.weight_bear_4 / 100.0
-        self.weight_bear_doji = self.weight_bear_doji / 100.0
-        self.weight_bull_bonus = self.weight_bull_bonus / 100.0
-        self.weight_bear_bonus = self.weight_bear_bonus / 100.0
-        self.weight_bull_penalty = self.weight_bull_penalty / 100.0
-        self.weight_bear_penalty = self.weight_bear_penalty / 100.0
-        self.stop_atr_mult = self.stop_atr_mult / 100.0
-
         # Register ATR indicator
         self.atr = self.I(lambda: indicator_atr(
             self.data.High,
@@ -378,44 +361,6 @@ class HeikinAshiWeightedStrategy(Strategy):
                         pass
 
 # ========================================
-# SAMBO Optimization Analysis
-# ========================================
-
-def analyze_sambo_results(optimize_result):
-    """Analyze and display SAMBO optimization results."""
-    if not optimize_result or 'history' not in optimize_result:
-        print("No SAMBO optimization results available.")
-        return
-
-    print("\n=== SAMBO Optimization Analysis ===")
-
-    # Extract optimization history
-    history = optimize_result.get('history', [])
-
-    if history:
-        # Convert history to DataFrame for analysis
-        import pandas as pd
-        history_df = pd.DataFrame(history)
-
-        print(f"Total evaluations: {len(history_df)}")
-        print(f"Best result found: {history_df.iloc[-1]['Return [%]']:.2f}%")
-
-        # Show parameter evolution
-        print("\nParameter evolution:")
-        for param in ['atr_period', 'weight_bull_1', 'weight_bull_2', 'weight_bull_3', 'weight_bull_4',
-                      'weight_bull_doji', 'weight_bear_1', 'weight_bear_2', 'weight_bear_3', 'weight_bear_4',
-                      'weight_bear_doji', 'weight_bull_bonus', 'weight_bear_bonus', 'weight_bull_penalty', 'weight_bear_penalty']:
-            if param in history_df.columns:
-                print(f"  {param}: {history_df[param].iloc[0]:.3f} -> {history_df[param].iloc[-1]:.3f}")
-
-    # Display optimization statistics if available
-    if 'stats' in optimize_result:
-        stats = optimize_result['stats']
-        print(f"\nOptimization Statistics:")
-        print(f"  Time taken: {stats.get('time_elapsed', 'N/A')} seconds")
-        print(f"  Evaluations per second: {stats.get('evals_per_sec', 'N/A'):.1f}")
-
-# ========================================
 # Main Backtest Runner
 # ========================================
 
@@ -446,30 +391,28 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    stats, heatmap, optimize_result = bt.optimize(
-        atr_period=14,
-        weight_bull_1=(25, 35),  # 0.25 to 0.35
-        weight_bull_2=(15, 25),  # 0.15 to 0.25
-        weight_bull_3=(30, 40),  # 0.30 to 0.40
-        weight_bull_4=(40, 50),  # 0.40 to 0.50
-        weight_bull_doji=(35, 45),  # 0.35 to 0.45
-        weight_bear_1=(15, 25),  # 0.15 to 0.25
-        weight_bear_2=(10, 20),  # 0.10 to 0.20
-        weight_bear_3=(15, 20),  # 0.15 to 0.20
-        weight_bear_4=(15, 25),  # 0.15 to 0.25
-        weight_bear_doji=(30, 35),  # 0.30 to 0.35
-        weight_bull_bonus=(5, 15),  # 0.05 to 0.15
-        weight_bear_bonus=(5, 15),  # 0.05 to 0.15
-        weight_bull_penalty=(0, 10),  # 0.00 to 0.10
-        weight_bear_penalty=(0, 10),  # 0.00 to 0.10
-        stop_atr_mult=150,
+    #'''
+    stats, heatmap = bt.optimize(
+        atr_period = 14,
+        weight_bull_1=[0.25, 0.3, 0.35],
+        weight_bull_2=[0.15, 0.20, 0.25],
+        weight_bull_3=[0.3, 0.35, 0.4],
+        weight_bull_4=[0.4, 0.45, 0.5],
+        weight_bull_doji=[0.35, 0.4, 0.45],
+        weight_bear_1=[0.15, 0.2, 0.25],
+        weight_bear_2=[0.1, 0.15, 0.2],
+        weight_bear_3=[0.15, 0.2],
+        weight_bear_4=[0.15, 0.2, 0.25],
+        weight_bear_doji=[0.3, 0.35],
+        weight_bull_bonus=[0.05, 0.1, 0.15],
+        weight_bear_bonus=[0.05, 0.1, 0.15],
+        weight_bull_penalty=[0.0, 0.05, 0.1],
+        weight_bear_penalty=[0.0, 0.05, 0.1],
+        stop_atr_mult=[1.5],
         maximize='Return [%]',
-        method="sambo",
-        max_tries=10000,
-        random_state=42,
-        return_heatmap=True,
-        return_optimization=True
+        return_heatmap=True
     )
+    #'''
 
     '''
     stats, heatmap = bt.optimize(
@@ -500,23 +443,20 @@ def run(path):
     print("\n--- Best Parameters ---")
     st = stats._strategy
     print(f"  atr_period: {st.atr_period}")
-    print(f"  weight_bull_1: {st.weight_bull_1 / 100:.2f} | weight_bull_2: {st.weight_bull_2 / 100:.2f}")
-    print(f"  weight_bull_3: {st.weight_bull_3 / 100:.2f} | weight_bull_4: {st.weight_bull_4 / 100:.2f}")
-    print(f"  weight_bull_doji: {st.weight_bull_doji / 100:.2f}")
-    print(f"  weight_bull_bonus: {st.weight_bull_bonus / 100:.2f} | weight_bear_bonus: {st.weight_bear_bonus / 100:.2f}")
-    print(f"  weight_bull_penalty: {st.weight_bull_penalty / 100:.2f} | weight_bear_penalty: {st.weight_bear_penalty / 100:.2f}")
-    print(f"  weight_bear_1: {st.weight_bear_1 / 100:.2f} | weight_bear_2: {st.weight_bear_2 / 100:.2f}")
-    print(f"  weight_bear_3: {st.weight_bear_3 / 100:.2f} | weight_bear_4: {st.weight_bear_4 / 100:.2f}")
-    print(f"  weight_bear_doji: {st.weight_bear_doji / 100:.2f}")
-    print(f"  stop_atr_mult: {st.stop_atr_mult / 100:.2f}")
+    print(f"  weight_bull_1: {st.weight_bull_1} | weight_bull_2: {st.weight_bull_2}")
+    print(f"  weight_bull_3: {st.weight_bull_3} | weight_bull_4: {st.weight_bull_4}")
+    print(f"  weight_bull_doji: {st.weight_bull_doji}")
+    print(f"  weight_bull_bonus: {st.weight_bull_bonus} | weight_bear_bonus: {st.weight_bear_bonus}")
+    print(f"  weight_bull_penalty: {st.weight_bull_penalty} | weight_bear_penalty: {st.weight_bear_penalty}")
+    print(f"  weight_bear_1: {st.weight_bear_1} | weight_bear_2: {st.weight_bear_2}")
+    print(f"  weight_bear_3: {st.weight_bear_3} | weight_bear_4: {st.weight_bear_4}")
+    print(f"  weight_bear_doji: {st.weight_bear_doji}")
+    print(f"  stop_atr_mult: {st.stop_atr_mult}")
 
     plot_filename = f"HeikinAshi_weighted_{date.today()}.html"
     heatmap_filename = f"HeikinAshi_weighted_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
-
-    analyze_sambo_results(optimize_result)
-
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
     print("\n--- Top 150 parameter sets (by Return [%]): (.csv) ---")
     top_df = heatmap.sort_values(ascending=False).iloc[:150].reset_index()
