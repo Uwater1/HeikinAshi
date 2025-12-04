@@ -15,13 +15,6 @@ from numba import jit
 from backtesting import Backtest, Strategy
 from backtesting.lib import plot_heatmaps
 
-# Try to import sambo, but don't fail if it's not available
-try:
-    import sambo
-    SAMBO_AVAILABLE = True
-except ImportError:
-    SAMBO_AVAILABLE = False
-    print("Warning: sambo package not available, will use fallback optimization method")
 
 # Silence tqdm progress bars emitted by Backtest.run / optimize
 os.environ.setdefault("TQDM_DISABLE", "1")
@@ -386,44 +379,6 @@ class HeikinAshiWeightedStrategy(Strategy):
                         pass
 
 # ========================================
-# SAMBO Optimization Analysis
-# ========================================
-
-def analyze_sambo_results(optimize_result):
-    """Analyze and display SAMBO optimization results."""
-    if not optimize_result or 'history' not in optimize_result:
-        print("No SAMBO optimization results available.")
-        return
-
-    print("\n=== SAMBO Optimization Analysis ===")
-
-    # Extract optimization history
-    history = optimize_result.get('history', [])
-
-    if history:
-        # Convert history to DataFrame for analysis
-        import pandas as pd
-        history_df = pd.DataFrame(history)
-
-        print(f"Total evaluations: {len(history_df)}")
-        print(f"Best result found: {history_df.iloc[-1]['Return [%]']:.2f}%")
-
-        # Show parameter evolution
-        print("\nParameter evolution:")
-        for param in ['atr_period', 'weight_bull_1', 'weight_bull_2', 'weight_bull_3', 'weight_bull_4',
-                      'weight_bull_doji', 'weight_bear_1', 'weight_bear_2', 'weight_bear_3', 'weight_bear_4',
-                      'weight_bear_doji', 'weight_bull_bonus', 'weight_bear_bonus', 'weight_bull_penalty', 'weight_bear_penalty']:
-            if param in history_df.columns:
-                print(f"  {param}: {history_df[param].iloc[0]:.3f} -> {history_df[param].iloc[-1]:.3f}")
-
-    # Display optimization statistics if available
-    if 'stats' in optimize_result:
-        stats = optimize_result['stats']
-        print(f"\nOptimization Statistics:")
-        print(f"  Time taken: {stats.get('time_elapsed', 'N/A')} seconds")
-        print(f"  Evaluations per second: {stats.get('evals_per_sec', 'N/A'):.1f}")
-
-# ========================================
 # Main Backtest Runner
 # ========================================
 
@@ -454,61 +409,30 @@ def run(path):
     except Exception as e:
         print(f"Warning: Could not set process priority: {e}\n")
 
-    # Try to use sambo optimization method, fall back to random if sambo is not available
-    try:
-        stats, heatmap, optimize_result = bt.optimize(
-            atr_period=(10, 20),
-            weight_bull_1=(25, 35),  # 0.25 to 0.35
-            weight_bull_2=(15, 30),  # 0.15 to 0.30
-            weight_bull_3=(30, 40),  # 0.30 to 0.40
-            weight_bull_4=(35, 50),  # 0.35 to 0.50
-            weight_bull_doji=(30, 45),  # 0.30 to 0.45
-            weight_bear_1=(10, 25),  # 0.10 to 0.25
-            weight_bear_2=(10, 25),  # 0.10 to 0.25
-            weight_bear_3=(10, 25),  # 0.10 to 0.25
-            weight_bear_4=(10, 25),  # 0.10 to 0.25
-            weight_bear_doji=(25, 40),  # 0.25 to 0.40
-            weight_bull_bonus=(0, 15),  # 0.00 to 0.15
-            weight_bear_bonus=(0, 15),  # 0.00 to 0.15
-            weight_bull_penalty=(0, 15),  # 0.00 to 0.15
-            weight_bear_penalty=(0, 15),  # 0.00 to 0.15
-            stop_atr_mult=150,
-            maximize='Return [%]',
-            method="sambo",
-            max_tries=50000,
-            random_state=42,
-            return_heatmap=True,
-            return_optimization=True
-        )
-    except ImportError as e:
-        if "sambo" in str(e):
-            print("Warning: sambo package not available, falling back to random optimization method")
-            stats, heatmap = bt.optimize(
-                atr_period=(10, 20),
-                weight_bull_1=(25, 35),  # 0.25 to 0.35
-                weight_bull_2=(15, 30),  # 0.15 to 0.25
-                weight_bull_3=(30, 40),  # 0.30 to 0.40
-                weight_bull_4=(35, 50),  # 0.40 to 0.50
-                weight_bull_doji=(30, 45),  # 0.35 to 0.45
-                weight_bear_1=(10, 25),  # 0.15 to 0.25
-                weight_bear_2=(10, 25),  # 0.10 to 0.20
-                weight_bear_3=(10, 25),  # 0.15 to 0.20
-                weight_bear_4=(10, 25),  # 0.15 to 0.25
-                weight_bear_doji=(25, 40),  # 0.30 to 0.35
-                weight_bull_bonus=(0, 15),  # 0.05 to 0.15
-                weight_bear_bonus=(0, 15),  # 0.05 to 0.15
-                weight_bull_penalty=(0, 15),  # 0.00 to 0.10
-                weight_bear_penalty=(0, 15),  # 0.00 to 0.10
-                stop_atr_mult=150,
-                maximize='Return [%]',
-                method="random",
-                max_tries=50000,
-                random_state=42,
-                return_heatmap=True
-            )
-            optimize_result = None
-        else:
-            raise e
+    # Use random optimization method
+    stats, heatmap = bt.optimize(
+        atr_period=(8, 20),
+        weight_bull_1=(25, 35),  # 0.25 to 0.35
+        weight_bull_2=(15, 30),  # 0.15 to 0.25
+        weight_bull_3=(30, 40),  # 0.30 to 0.40
+        weight_bull_4=(35, 50),  # 0.40 to 0.50
+        weight_bull_doji=(30, 45),  # 0.35 to 0.45
+        weight_bear_1=(10, 25),  # 0.15 to 0.25
+        weight_bear_2=(10, 25),  # 0.10 to 0.20
+        weight_bear_3=(10, 25),  # 0.15 to 0.20
+        weight_bear_4=(10, 25),  # 0.15 to 0.25
+        weight_bear_doji=(25, 40),  # 0.30 to 0.35
+        weight_bull_bonus=(0, 15),  # 0.05 to 0.15
+        weight_bear_bonus=(0, 15),  # 0.05 to 0.15
+        weight_bull_penalty=(0, 15),  # 0.00 to 0.10
+        weight_bear_penalty=(0, 15),  # 0.00 to 0.10
+        stop_atr_mult=150,
+        maximize='Return [%]',
+        method="grid",
+        max_tries=500,
+        random_state=42,
+        return_heatmap=True
+    )
 
     '''
     stats, heatmap = bt.optimize(
@@ -553,8 +477,6 @@ def run(path):
     heatmap_filename = f"HeikinAshi_weighted_heatmap_{date.today()}.html"
     bt.plot(filename=plot_filename)
     plot_heatmaps(heatmap, filename=heatmap_filename)
-
-    analyze_sambo_results(optimize_result)
 
     print(f"Plot saved as: {plot_filename}  ||  Heatmap saved as: {heatmap_filename}")
     print("\n--- Top 150 parameter sets (by Return [%]): (.csv) ---")
