@@ -648,10 +648,10 @@ def run(path):
     # Use random optimization method with full backward compatibility
     stats, heatmap, optimize_result = bt.optimize(
         atr_period=(8, 20),
-        weight_bull_1=(25, 35),  # 0.25 to 0.35
+        weight_bull_1=(20, 35),  # 0.25 to 0.35
         weight_bull_2=(15, 30),  # 0.15 to 0.25
-        weight_bull_3=(25, 35),  # 0.30 to 0.40
-        weight_bull_4=(35, 50),  # 0.40 to 0.50
+        weight_bull_3=(20, 35),  # 0.30 to 0.40
+        weight_bull_4=(25, 40),  # 0.40 to 0.50
         weight_bear_1=(10, 25),  # 0.15 to 0.25
         weight_bear_2=(10, 25),  # 0.10 to 0.20
         weight_bear_3=(10, 25),  # 0.15 to 0.20
@@ -662,15 +662,15 @@ def run(path):
         # Context-specific doji parameters (include original hardcoded values)
         doji_lookback_bear=(3, 8),      # 3-8 (includes 5)
         doji_threshold_bear=(20, 60),   # 0.2-0.6 bear quality threshold
-        doji_lookback_bull=(10, 25),    # 10-25 (includes 15)
-        doji_threshold_bull=(30, 60),   # 0.3-0.6 bull quality threshold
+        doji_lookback_bull=(6, 25),    # 10-25 (includes 15)
+        doji_threshold_bull=(30, 90),   # 0.3-0.6 bull quality threshold
         hammer_atr_factor=(30, 70),     # 0.3-0.7 ATR fraction (includes 0.5)
         # New weights (0 enables legacy mode)
         weight_bear_momentum=(0, 50),   # 0.0-0.5 (0 = legacy mode)
         weight_bull_hammer=(0, 60),     # 0.0-0.6 (0 = legacy mode)
         weight_bull_bonus=(0, 15),  # 0.05 to 0.15
         weight_bear_bonus=(0, 15),  # 0.05 to 0.15
-        weight_bull_penalty=(0, 15),  # 0.00 to 0.10
+        weight_bull_penalty=(0, 20),  # 0.00 to 0.10
         weight_bear_penalty=(0, 15),  # 0.00 to 0.10
         stop_atr_mult=150,
         maximize='Return [%]',
