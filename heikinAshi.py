@@ -331,16 +331,14 @@ class HeikinAshiWeightedStrategy(Strategy):
         """Get HA body size at idx."""
         return float(self.ha_close[idx]) - float(self.ha_open[idx])
 
-    def _get_atr_cur(self):
+    def _get_atr_cur(self, price):
         """Get current ATR value with fallback."""
-        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
-        if atr_cur <= 1:
-            atr_cur = 1.0
-        return atr_cur
+        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else price * 0.01)
+        return max(atr_cur, price * 0.01)
 
-    def compute_entry_score(self):
+    def compute_entry_score(self, price):
         """Compute weighted entry score using bull weights."""
-        atr_cur = self._get_atr_cur()
+        atr_cur = self._get_atr_cur(price)
         bull_weights = self.bull_weights_arr
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
@@ -350,9 +348,9 @@ class HeikinAshiWeightedStrategy(Strategy):
             is_entry=True
         ))
 
-    def compute_exit_score(self):
+    def compute_exit_score(self, price):
         """Compute weighted exit score using bear weights."""
-        atr_cur = self._get_atr_cur()
+        atr_cur = self._get_atr_cur(price)
         bear_weights = self.bear_weights_arr
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
@@ -369,7 +367,7 @@ class HeikinAshiWeightedStrategy(Strategy):
 
         # Entry logic - use bull weights, trigger when score >= 1.0
         if not self.position:
-            entry_score = self.compute_entry_score()
+            entry_score = self.compute_entry_score(price)
             if entry_score >= 1.0:  # Fixed threshold for entry
                 sl_price = max(price * 0.95, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else price * 0.97
                 try:
@@ -379,7 +377,7 @@ class HeikinAshiWeightedStrategy(Strategy):
 
         # Exit logic - use bear weights, trigger when score >= 1.0
         else:
-            exit_score = self.compute_exit_score()
+            exit_score = self.compute_exit_score(price)
             if exit_score >= 1.0:  # Fixed threshold for exit
                 try:
                     self.position.close()
