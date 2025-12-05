@@ -599,7 +599,7 @@ def run(path):
         weight_rsi_bear=(0, 25),  # 0.00 to 0.25 weight
         maximize='Return [%]',
         method="sambo",
-        max_tries=100000,  # Increased for additional RSI parameters
+        max_tries=200000,  # Increased for additional RSI parameters
         random_state=2,
         return_heatmap=True,
         return_optimization=True
