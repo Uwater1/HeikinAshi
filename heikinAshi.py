@@ -301,6 +301,10 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.doji_body_frac = self.doji_body_frac / 100.0
         self.stop_atr_mult = self.stop_atr_mult / 100.0
 
+        # Pre-compute weight arrays for performance
+        self.bull_weights_arr = np.array([self.weight_bull_1, self.weight_bull_2, self.weight_bull_3, self.weight_bull_4], dtype=np.float32)
+        self.bear_weights_arr = np.array([self.weight_bear_1, self.weight_bear_2, self.weight_bear_3, self.weight_bear_4], dtype=np.float32)
+
         # Register ATR indicator
         self.atr = self.I(lambda: indicator_atr(
             self.data.High,
@@ -333,7 +337,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        bull_weights = np.array([self.weight_bull_1, self.weight_bull_2, self.weight_bull_3, self.weight_bull_4], dtype=np.float32)
+        bull_weights = self.bull_weights_arr
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
             np.float32(self.weight_bull_doji), np.float32(self.doji_body_frac), self.prior_idx,
@@ -348,7 +352,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         if atr_cur <= 0:
             atr_cur = 1.0
 
-        bear_weights = np.array([self.weight_bear_1, self.weight_bear_2, self.weight_bear_3, self.weight_bear_4], dtype=np.float32)
+        bear_weights = self.bear_weights_arr
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
             np.float32(self.weight_bear_doji), np.float32(self.doji_body_frac), self.prior_idx,
