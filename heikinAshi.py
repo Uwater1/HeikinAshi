@@ -589,7 +589,7 @@ def run(path):
         weight_bear_penalty=(0, 15),  # 0.00 to 0.15
         doji_body_frac=(10, 30),  # 0.10 to 0.30
         prior_idx=(-10, -3),  # -8 to -4 (look back 4-8 candles)
-        stop_atr_mult=150,
+        stop_atr_mult=(100, 200),
         # RSI parameters
         rsi_period=(8, 120),  # RSI calculation window
         rsi_lookback=(4, 12),  # Bars to look back for min/max
