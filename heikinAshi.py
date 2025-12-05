@@ -588,7 +588,7 @@ def run(path):
         weight_bull_penalty=(0, 15),  # 0.00 to 0.15
         weight_bear_penalty=(0, 15),  # 0.00 to 0.15
         doji_body_frac=(10, 30),  # 0.10 to 0.30
-        prior_idx=(-10, -3),  # -8 to -4 (look back 4-8 candles)
+        prior_idx=(-8, -4),  # -8 to -4 (look back 4-8 candles)
         stop_atr_mult=150,
         # RSI parameters
         rsi_period=(10, 80),  # RSI calculation window
@@ -598,8 +598,8 @@ def run(path):
         weight_rsi_bull=(0, 25),  # 0.00 to 0.25 weight
         weight_rsi_bear=(0, 25),  # 0.00 to 0.25 weight
         maximize='Return [%]',
-        method="sambo",
-        max_tries=30000,  # Increased for additional RSI parameters
+        method="grid",
+        max_tries=100000,  # Increased for additional RSI parameters
         random_state=2,
         return_heatmap=True,
         return_optimization=True
