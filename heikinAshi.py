@@ -160,14 +160,14 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
         prior_body = abs(ha_close[prior_idx] - ha_open[prior_idx])
         if prior_body < doji_body_frac * atr_cur:
             score += doji_weight
-        elif len_selected < 3:
-            prior_body = abs(ha_close[prior_idx + 1] - ha_open[prior_idx + 1])
-            if prior_body < doji_body_frac * atr_cur:
-                score += doji_weight
-        elif len_selected < 2:
-            prior_body = abs(ha_close[prior_idx + 2] - ha_open[prior_idx + 2])
-            if prior_body < doji_body_frac * atr_cur:
-                score += doji_weight
+        else:
+            # Check fallback positions based on len_selected
+            max_offset = 3 - len_selected
+            for offset in range(1, max_offset + 1):
+                prior_body = abs(ha_close[prior_idx + offset] - ha_open[prior_idx + offset])
+                if prior_body < doji_body_frac * atr_cur:
+                    score += doji_weight
+                    break
     except:
         pass
 
@@ -331,12 +331,16 @@ class HeikinAshiWeightedStrategy(Strategy):
         """Get HA body size at idx."""
         return float(self.ha_close[idx]) - float(self.ha_open[idx])
 
+    def _get_atr_cur(self):
+        """Get current ATR value with fallback."""
+        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
+        if atr_cur <= 1:
+            atr_cur = 1.0
+        return atr_cur
+
     def compute_entry_score(self):
         """Compute weighted entry score using bull weights."""
-        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
-        if atr_cur <= 0:
-            atr_cur = 1.0
-
+        atr_cur = self._get_atr_cur()
         bull_weights = self.bull_weights_arr
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
@@ -348,10 +352,7 @@ class HeikinAshiWeightedStrategy(Strategy):
 
     def compute_exit_score(self):
         """Compute weighted exit score using bear weights."""
-        atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 1.0)
-        if atr_cur <= 0:
-            atr_cur = 1.0
-
+        atr_cur = self._get_atr_cur()
         bear_weights = self.bear_weights_arr
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
