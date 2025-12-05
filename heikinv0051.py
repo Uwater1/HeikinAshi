@@ -211,12 +211,6 @@ def load_csv(path):
 # Indicator Functions
 # ========================================
 
-def indicator_rsi(close, length=14):
-    """Compute RSI using pandas-ta."""
-    close_series = pd.Series(close)
-    rsi = ta.rsi(close_series, length=length)
-    return rsi.to_numpy()
-
 def indicator_atr(high, low, close, length=14):
     """ATR with Numba optimization."""
     high = np.asarray(high, dtype=np.float32)
@@ -288,14 +282,6 @@ class HeikinAshiWeightedStrategy(Strategy):
     weight_bull_penalty = 0.05 # Penalty weight for decelerating bullish momentum
     weight_bear_penalty = 0.05 # Penalty weight for decelerating bearish momentum
 
-    # RSI parameters
-    rsi_period = 14                    # RSI calculation window
-    rsi_lookback = 8                   # Bars to look back for min/max
-    rsi_bull_threshold = 30            # Oversold threshold for entry
-    rsi_bear_threshold = 70            # Overbought threshold for exit
-    weight_rsi_bull = 15               # Weight for RSI entry signal (scaled by 100)
-    weight_rsi_bear = 15               # Weight for RSI exit signal (scaled by 100)
-
     def init(self):
         # Scale weights from integers (hundredths) to floats
         self.weight_bull_1 = self.weight_bull_1 / 100.0
@@ -315,10 +301,6 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.doji_body_frac = self.doji_body_frac / 100.0
         self.stop_atr_mult = self.stop_atr_mult / 100.0
 
-        # Scale RSI weights from integers (hundredths) to floats
-        self.weight_rsi_bull = self.weight_rsi_bull / 100.0
-        self.weight_rsi_bear = self.weight_rsi_bear / 100.0
-
         # Pre-compute weight arrays for performance
         self.bull_weights_arr = np.array([self.weight_bull_1, self.weight_bull_2, self.weight_bull_3, self.weight_bull_4], dtype=np.float32)
         self.bear_weights_arr = np.array([self.weight_bear_1, self.weight_bear_2, self.weight_bear_3, self.weight_bear_4], dtype=np.float32)
@@ -329,12 +311,6 @@ class HeikinAshiWeightedStrategy(Strategy):
             self.data.Low,
             self.data.Close,
             self.atr_period
-        ))
-
-        # Register RSI indicator
-        self.rsi = self.I(lambda: indicator_rsi(
-            self.data.Close,
-            self.rsi_period
         ))
 
         # Register HA columns as indicators
@@ -384,87 +360,25 @@ class HeikinAshiWeightedStrategy(Strategy):
             is_entry=False
         ))
 
-    def compute_rsi_entry_score(self):
-        """Compute RSI-based entry score (oversold signal).
-        
-        Looks back rsi_lookback bars to find minimum RSI.
-        If min RSI is below threshold, returns weighted distance as score.
-        More oversold = higher score contribution.
-        """
-        if len(self.rsi) < self.rsi_lookback + 1:
-            return 0.0
-        
-        # Get last rsi_lookback bars of RSI (exclude current bar)
-        lookback_window = self.rsi[-(self.rsi_lookback + 1):-1]
-        
-        # Handle NaN values
-        valid_rsi = lookback_window[~np.isnan(lookback_window)]
-        if len(valid_rsi) == 0:
-            return 0.0
-        
-        min_rsi = np.min(valid_rsi)
-        
-        # Distance below threshold = bullish signal
-        # More oversold = higher score
-        distance = self.rsi_bull_threshold - min_rsi
-        
-        if distance > 0:
-            return distance * self.weight_rsi_bull
-        return 0.0
-
-    def compute_rsi_exit_score(self):
-        """Compute RSI-based exit score (overbought signal).
-        
-        Looks back rsi_lookback bars to find maximum RSI.
-        If max RSI is above threshold, returns weighted distance as score.
-        More overbought = higher score contribution.
-        """
-        if len(self.rsi) < self.rsi_lookback + 1:
-            return 0.0
-        
-        # Get last rsi_lookback bars of RSI (exclude current bar)
-        lookback_window = self.rsi[-(self.rsi_lookback + 1):-1]
-        
-        # Handle NaN values
-        valid_rsi = lookback_window[~np.isnan(lookback_window)]
-        if len(valid_rsi) == 0:
-            return 0.0
-        
-        max_rsi = np.max(valid_rsi)
-        
-        # Distance above threshold = bearish signal
-        # More overbought = higher score
-        distance = max_rsi - self.rsi_bear_threshold
-        
-        if distance > 0:
-            return distance * self.weight_rsi_bear
-        return 0.0
-
     def next(self):
         """Execute strategy logic on each bar."""
         price = float(self.data.Close[-1])
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 0.0)
 
-        # Entry logic - combine HA and RSI scores, trigger when total >= 1.0
+        # Entry logic - use bull weights, trigger when score >= 1.0
         if not self.position:
-            ha_entry_score = self.compute_entry_score(price)
-            rsi_entry_score = self.compute_rsi_entry_score()
-            total_entry_score = ha_entry_score + rsi_entry_score
-            
-            if total_entry_score >= 1.0:  # Fixed threshold for entry
+            entry_score = self.compute_entry_score(price)
+            if entry_score >= 1.0:  # Fixed threshold for entry
                 sl_price = max(price * 0.95, price - self.stop_atr_mult * atr_cur) if atr_cur > 0 else price * 0.97
                 try:
                     self.buy(sl=sl_price)
                 except Exception:
                     self.buy()
 
-        # Exit logic - combine HA and RSI scores, trigger when total >= 1.0
+        # Exit logic - use bear weights, trigger when score >= 1.0
         else:
-            ha_exit_score = self.compute_exit_score(price)
-            rsi_exit_score = self.compute_rsi_exit_score()
-            total_exit_score = ha_exit_score + rsi_exit_score
-            
-            if total_exit_score >= 1.0:  # Fixed threshold for exit
+            exit_score = self.compute_exit_score(price)
+            if exit_score >= 1.0:  # Fixed threshold for exit
                 try:
                     self.position.close()
                 except Exception:
@@ -573,33 +487,26 @@ def run(path):
     # Use random optimization method
     stats, heatmap, optimize_result = bt.optimize(
         atr_period=(8, 20),
-        weight_bull_1=(20, 35),  # 0.20 to 0.35
-        weight_bull_2=(15, 30),  # 0.15 to 0.30
-        weight_bull_3=(20, 35),  # 0.20 to 0.35
-        weight_bull_4=(35, 50),  # 0.35 to 0.50
-        weight_bull_doji=(35, 45),  # 0.35 to 0.45
-        weight_bear_1=(10, 25),  # 0.10 to 0.25
-        weight_bear_2=(10, 25),  # 0.10 to 0.25
-        weight_bear_3=(10, 25),  # 0.10 to 0.25
-        weight_bear_4=(10, 25),  # 0.10 to 0.25
-        weight_bear_doji=(30, 40),  # 0.30 to 0.40
-        weight_bull_bonus=(0, 15),  # 0.00 to 0.15
-        weight_bear_bonus=(0, 15),  # 0.00 to 0.15
-        weight_bull_penalty=(0, 15),  # 0.00 to 0.15
-        weight_bear_penalty=(0, 15),  # 0.00 to 0.15
-        doji_body_frac=(10, 30),  # 0.10 to 0.30
-        prior_idx=(-8, -4),  # -8 to -4 (look back 4-8 candles)
+        weight_bull_1=(20, 35),  # 0.25 to 0.35
+        weight_bull_2=(15, 30),  # 0.15 to 0.25
+        weight_bull_3=(20, 35),  # 0.30 to 0.40
+        weight_bull_4=(35, 50),  # 0.40 to 0.50
+        weight_bull_doji=(35,45),  # 0.35 to 0.45
+        weight_bear_1=(10, 25),  # 0.15 to 0.25
+        weight_bear_2=(10, 25),  # 0.10 to 0.20
+        weight_bear_3=(10, 25),  # 0.15 to 0.20
+        weight_bear_4=(10, 25),  # 0.15 to 0.25
+        weight_bear_doji=(30,40),  # 0.30 to 0.35
+        weight_bull_bonus=(0, 15),  # 0.05 to 0.15
+        weight_bear_bonus=(0, 15),  # 0.05 to 0.15
+        weight_bull_penalty=(0, 15),  # 0.00 to 0.10
+        weight_bear_penalty=(0, 15),  # 0.00 to 0.10
+        doji_body_frac=(10, 30),  # 0.10 to 0.50
+        prior_idx=(-8, -4),  # -8 to -4 (look back 2-10 candles)
         stop_atr_mult=150,
-        # RSI parameters
-        rsi_period=(10, 60),  # RSI calculation window
-        rsi_lookback=(4, 12),  # Bars to look back for min/max
-        rsi_bull_threshold=(20, 50),  # Oversold threshold (20-50)
-        rsi_bear_threshold=(50, 80),  # Overbought threshold (50-80)
-        weight_rsi_bull=(0, 25),  # 0.00 to 0.25 weight
-        weight_rsi_bear=(0, 25),  # 0.00 to 0.25 weight
         maximize='Return [%]',
         method="sambo",
-        max_tries=15000,  # Increased for additional RSI parameters
+        max_tries=10000,
         random_state=1,
         return_heatmap=True,
         return_optimization=True
@@ -645,11 +552,6 @@ def run(path):
     print(f"  doji_body_frac: {st.doji_body_frac}")
     print(f"  prior_idx: {st.prior_idx}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
-    print(f"\n  RSI Configuration:")
-    print(f"    rsi_period: {st.rsi_period}")
-    print(f"    rsi_lookback: {st.rsi_lookback}")
-    print(f"    rsi_bull_threshold: {st.rsi_bull_threshold} | rsi_bear_threshold: {st.rsi_bear_threshold}")
-    print(f"    weight_rsi_bull: {st.weight_rsi_bull:.3f} | weight_rsi_bear: {st.weight_rsi_bear:.3f}")
 
     plot_filename = f"HeikinAshi_weighted_{date.today()}.html"
     heatmap_filename = f"HeikinAshi_weighted_heatmap_{date.today()}.html"
