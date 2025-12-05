@@ -645,7 +645,6 @@ def run(path):
     print(f"  doji_body_frac: {st.doji_body_frac}")
     print(f"  prior_idx: {st.prior_idx}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
-    print(f"\n  RSI Configuration:")
     print(f"    rsi_period: {st.rsi_period}")
     print(f"    rsi_lookback: {st.rsi_lookback}")
     print(f"    rsi_bull_threshold: {st.rsi_bull_threshold} | rsi_bear_threshold: {st.rsi_bear_threshold}")
