@@ -73,7 +73,7 @@ def _compute_heikin_ashi_numba(o, h, l, c):
     return ha_open, ha_high, ha_low, ha_close
 
 @jit(nopython=True, cache=True)
-def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_body_frac, prior_idx,
+def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_body_frac,
                         weight_bull_bonus=0.1, weight_bear_bonus=0.1,
                         weight_bull_penalty=0.05, weight_bear_penalty=0.05, is_entry=True):
     """Numba-optimized score calculation with momentum tracking for bars 3 and 4.
@@ -119,10 +119,8 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
     for j, i in enumerate(selected):
         score += weights[j] * bar_sizes[i]
 
-    len_selected = len(selected)
-
     # Momentum tracking for the 3rd and 4th selected bars
-    if len_selected >= 3:
+    if len(selected) >= 3:
         # For 3rd selected bar
         current_idx = selected[2]
         prev_indices = selected[0:2]
@@ -140,7 +138,7 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
             penalty = (min_prev_size - current_size) * penalty_weight
             score -= penalty
 
-    if len_selected >= 4:
+    if len(selected) >= 4:
         # For 4th selected bar
         current_idx = selected[3]
         prev_indices = selected[0:3]
@@ -155,19 +153,17 @@ def _compute_score_numba(ha_open, ha_close, atr_cur, weights, doji_weight, doji_
             penalty = (min_prev_size - current_size) * penalty_weight
             score -= penalty
 
-    # Doji bonus logic 
+    # Doji bonus logic (unchanged for performance)
     try:
+        prior_idx = -6
         prior_body = abs(ha_close[prior_idx] - ha_open[prior_idx])
         if prior_body < doji_body_frac * atr_cur:
-            score += doji_weight
-        elif len_selected < 3:
-            prior_body = abs(ha_close[prior_idx + 1] - ha_open[prior_idx + 1])
-            if prior_body < doji_body_frac * atr_cur:
-                score += doji_weight
-        elif len_selected < 2:
-            prior_body = abs(ha_close[prior_idx + 2] - ha_open[prior_idx + 2])
-            if prior_body < doji_body_frac * atr_cur:
-                score += doji_weight
+            if is_entry:
+                if ha_close[prior_idx] < ha_open[prior_idx]:
+                    score += doji_weight
+            else:
+                if ha_close[prior_idx] > ha_open[prior_idx]:
+                    score += doji_weight
     except:
         pass
 
@@ -273,9 +269,6 @@ class HeikinAshiWeightedStrategy(Strategy):
     # Doji threshold (fraction of ATR)
     doji_body_frac = 0.20
 
-    # Prior index for doji pattern detection
-    prior_idx = -6
-
     # Momentum tracking parameters
     weight_bull_bonus = 0.1    # Bonus weight for accelerating bullish momentum
     weight_bear_bonus = 0.1     # Bonus weight for accelerating bearish momentum
@@ -298,7 +291,6 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.weight_bear_bonus = self.weight_bear_bonus / 100.0
         self.weight_bull_penalty = self.weight_bull_penalty / 100.0
         self.weight_bear_penalty = self.weight_bear_penalty / 100.0
-        self.doji_body_frac = self.doji_body_frac / 100.0
         self.stop_atr_mult = self.stop_atr_mult / 100.0
 
         # Register ATR indicator
@@ -336,7 +328,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         bull_weights = np.array([self.weight_bull_1, self.weight_bull_2, self.weight_bull_3, self.weight_bull_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bull_weights,
-            np.float32(self.weight_bull_doji), np.float32(self.doji_body_frac), self.prior_idx,
+            np.float32(self.weight_bull_doji), np.float32(self.doji_body_frac),
             np.float32(self.weight_bull_bonus), np.float32(self.weight_bear_bonus),
             np.float32(self.weight_bull_penalty), np.float32(self.weight_bear_penalty),
             is_entry=True
@@ -351,7 +343,7 @@ class HeikinAshiWeightedStrategy(Strategy):
         bear_weights = np.array([self.weight_bear_1, self.weight_bear_2, self.weight_bear_3, self.weight_bear_4], dtype=np.float32)
         return float(_compute_score_numba(
             self.ha_open, self.ha_close, np.float32(atr_cur), bear_weights,
-            np.float32(self.weight_bear_doji), np.float32(self.doji_body_frac), self.prior_idx,
+            np.float32(self.weight_bear_doji), np.float32(self.doji_body_frac),
             np.float32(self.weight_bull_bonus), np.float32(self.weight_bear_bonus),
             np.float32(self.weight_bull_penalty), np.float32(self.weight_bear_penalty),
             is_entry=False
@@ -414,7 +406,7 @@ def analyze_sambo_results(optimize_result):
         param_names = ['atr_period', 'weight_bull_1', 'weight_bull_2', 'weight_bull_3', 'weight_bull_4',
                       'weight_bull_doji', 'weight_bear_1', 'weight_bear_2', 'weight_bear_3', 'weight_bear_4',
                       'weight_bear_doji', 'weight_bull_bonus', 'weight_bear_bonus',
-                      'weight_bull_penalty', 'weight_bear_penalty', 'doji_body_frac', 'prior_idx', 'stop_atr_mult']
+                      'weight_bull_penalty', 'weight_bear_penalty', 'stop_atr_mult']
 
         # Convert parameter vectors to DataFrame
         history_data = []
@@ -498,8 +490,6 @@ def run(path):
         weight_bear_bonus=(0, 15),  # 0.05 to 0.15
         weight_bull_penalty=(0, 15),  # 0.00 to 0.10
         weight_bear_penalty=(0, 15),  # 0.00 to 0.10
-        doji_body_frac=(10, 30),  # 0.10 to 0.50
-        prior_idx=(-8, -4),  # -8 to -4 (look back 2-10 candles)
         stop_atr_mult=150,
         maximize='Return [%]',
         method="sambo",
@@ -546,8 +536,6 @@ def run(path):
     print(f"  weight_bear_1: {st.weight_bear_1} | weight_bear_2: {st.weight_bear_2}")
     print(f"  weight_bear_3: {st.weight_bear_3} | weight_bear_4: {st.weight_bear_4}")
     print(f"  weight_bear_doji: {st.weight_bear_doji}")
-    print(f"  doji_body_frac: {st.doji_body_frac}")
-    print(f"  prior_idx: {st.prior_idx}")
     print(f"  stop_atr_mult: {st.stop_atr_mult}")
 
     plot_filename = f"HeikinAshi_weighted_{date.today()}.html"
