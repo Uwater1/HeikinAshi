@@ -585,7 +585,7 @@ def run(path):
         weight_bull_1=(20, 35),  # 0.20 to 0.35
         weight_bull_2=(10, 30),  # 0.15 to 0.30
         weight_bull_3=(20, 40),  # 0.20 to 0.35
-        weight_bull_4=(30, 60),  # 0.35 to 0.50
+        weight_bull_4=(30, 55),  # 0.35 to 0.50
         weight_bull_doji=(30, 50),  # 0.35 to 0.45
         weight_bear_1=(10, 25),  # 0.10 to 0.25
         weight_bear_2=(10, 25),  # 0.10 to 0.25
