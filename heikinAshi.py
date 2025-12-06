@@ -343,6 +343,9 @@ class HeikinAshiWeightedStrategy(Strategy):
         self.ha_high = self.I(lambda: np.asarray(self.data.HA_high, dtype=np.float32))
         self.ha_low = self.I(lambda: np.asarray(self.data.HA_low, dtype=np.float32))
 
+        # Initialize bar counter to skip trading in first 50 bars
+        self.bar_count = 0
+
     def _is_green(self, idx):
         """Check if candle at idx is green."""
         return float(self.ha_close[idx]) > float(self.ha_open[idx])
@@ -442,6 +445,12 @@ class HeikinAshiWeightedStrategy(Strategy):
 
     def next(self):
         """Execute strategy logic on each bar."""
+        self.bar_count += 1
+
+        # Skip trading in first 40 bars to allow indicators to stabilize
+        if self.bar_count < 40:
+            return
+
         price = float(self.data.Close[-1])
         atr_cur = float(self.atr[-1] if len(self.atr) > 0 else 0.0)
 
@@ -573,15 +582,15 @@ def run(path):
     # Use random optimization method
     stats, heatmap, optimize_result = bt.optimize(
         atr_period=(8, 20),
-        weight_bull_1=(15, 40),  # 0.20 to 0.35
-        weight_bull_2=(15, 40),  # 0.15 to 0.30
+        weight_bull_1=(20, 35),  # 0.20 to 0.35
+        weight_bull_2=(10, 30),  # 0.15 to 0.30
         weight_bull_3=(20, 40),  # 0.20 to 0.35
         weight_bull_4=(30, 60),  # 0.35 to 0.50
         weight_bull_doji=(30, 50),  # 0.35 to 0.45
-        weight_bear_1=(10, 30),  # 0.10 to 0.25
-        weight_bear_2=(10, 30),  # 0.10 to 0.25
-        weight_bear_3=(10, 30),  # 0.10 to 0.25
-        weight_bear_4=(10, 30),  # 0.10 to 0.25
+        weight_bear_1=(10, 25),  # 0.10 to 0.25
+        weight_bear_2=(10, 25),  # 0.10 to 0.25
+        weight_bear_3=(10, 25),  # 0.10 to 0.25
+        weight_bear_4=(10, 25),  # 0.10 to 0.25
         weight_bear_doji=(25, 40),  # 0.30 to 0.40
         weight_bull_bonus=(0, 15),  # 0.00 to 0.15
         weight_bear_bonus=(0, 15),  # 0.00 to 0.15
@@ -591,12 +600,12 @@ def run(path):
         prior_idx=(-8, -4),  # -8 to -4 (look back 4-8 candles)
         stop_atr_mult=150,
         # RSI parameters
-        rsi_period=(10, 80),  # RSI calculation window
-        rsi_lookback=(4, 12),  # Bars to look back for min/max
-        rsi_bull_threshold=(20, 50),  # Oversold threshold (20-50)
-        rsi_bear_threshold=(50, 80),  # Overbought threshold (50-80)
-        weight_rsi_bull=(0, 25),  # 0.00 to 0.25 weight
-        weight_rsi_bear=(0, 25),  # 0.00 to 0.25 weight
+        rsi_period=(10, 65),  # RSI calculation window
+        rsi_lookback=(6, 12),  # Bars to look back for min/max
+        rsi_bull_threshold=(20, 40),  # Oversold threshold (20-50)
+        rsi_bear_threshold=(60, 80),  # Overbought threshold (50-80)
+        weight_rsi_bull=(0, 20),  # 0.00 to 0.25 weight
+        weight_rsi_bear=(0, 20),  # 0.00 to 0.25 weight
         maximize='Return [%]',
         method="sambo",
         max_tries=200000,  # Increased for additional RSI parameters
