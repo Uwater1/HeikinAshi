@@ -1,9 +1,9 @@
 name: HeikinAshi daily run
 
 on:
-  # daily at 04:00 UTC (quiet time)
-  schedule:
-    - cron: '0 4 * * *'
+  # daily at 04:00 UTC (quiet time) - DISABLED
+  # schedule:
+  #   - cron: '0 4 * * *'
   workflow_dispatch:
 
 env:
