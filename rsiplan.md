@@ -347,7 +347,7 @@ def test_rsi_scoring():
 
 ---
 
-## Phase 6: Alternative Designs (Future Enhancements)
+## Phase 6: Alternative Designs (Future Enhancements) (Not implemented yet)
 
 ### Option 1: RSI Divergence Detection
 Instead of absolute levels, detect divergence:
